@@ -1,0 +1,320 @@
+# QUANTTUM AI
+## Project Constitution & Technical Specification
+**Version:** 1.0  
+**Project status:** Active Development  
+**Current release:** 0.1.0  
+**Project owner:** Jerry Quanttum
+
+---
+
+## 1. Project Vision
+
+Quanttum AI is an offline-first, modular personal artificial intelligence assistant designed to operate as an intelligent companion and productivity system on a personal computer.
+
+It is not intended to be merely a conversational chatbot.
+
+Its purpose is to understand natural language, maintain persistent contextual memory, interact with the operating system, manage information, execute authorised tasks, automate workflows and provide intelligent assistance.
+
+The long-term objective is to develop an extensible personal AI environment capable of functioning independently of cloud-based AI services.
+
+## 2. Core Principles
+
+Every development decision must respect these principles:
+
+1. **Offline-first:** Core functionality must remain available without internet access.
+2. **Modularity:** Each major capability must operate as an independent component.
+3. **Resource efficiency:** The application must accommodate low-resource computers.
+4. **Persistent memory:** Useful information must survive application restarts.
+5. **Context awareness:** The assistant must understand relevant previous interactions.
+6. **Action-oriented intelligence:** It must perform useful tasks, not just generate responses.
+7. **User control:** Sensitive operations require appropriate authorisation.
+8. **Extensibility:** New models, tools and capabilities should integrate without requiring a complete rewrite.
+9. **Privacy:** Personal information and local documents should remain under the user's control.
+10. **Reliability:** Operations must be testable, recoverable and properly logged.
+
+## 3. System Architecture
+
+The application will use a modular architecture consisting of five primary engines.
+
+### A. Quanttum Core
+Responsible for:
+- Application orchestration.
+- Request routing.
+- Context management.
+- Module coordination.
+- Error handling.
+- Task lifecycle management.
+
+### B. Intelligence Engine
+Responsible for:
+- Natural language understanding.
+- Intent recognition.
+- Contextual reasoning.
+- Conversational generation.
+- Local language model integration.
+- Model selection and resource management.
+
+Potential technologies:
+- Python.
+- spaCy.
+- Ollama.
+- Small quantised language models.
+
+### C. Memory Engine
+Responsible for:
+- Persistent conversational memory.
+- User preferences.
+- Personal knowledge.
+- Project information.
+- Retrieval and contextual recall.
+- Memory organisation and management.
+
+Initial technology: SQLite.
+
+Future possibilities: Full-text search, vector retrieval and semantic indexing.
+
+### D. Action Engine
+Responsible for:
+- Application launching.
+- File operations.
+- Folder organisation.
+- System commands.
+- Task automation.
+- Reminders.
+- Workflow execution.
+
+All potentially destructive or sensitive operations must use explicit permission controls.
+
+### E. Perception and System Engine
+
+**Perception:**
+- Speech recognition.
+- Text-to-speech.
+- Document processing.
+- Input interpretation.
+
+**System management:**
+- RAM monitoring.
+- CPU monitoring.
+- Storage monitoring.
+- Process monitoring.
+- Performance optimisation.
+
+## 4. Development Environment
+
+Current development hardware:
+
+| Component | Specification |
+|---|---|
+| Processor | Intel Celeron N4020 |
+| RAM | 4 GB |
+| Storage | SSD, approximately 15 GB free at project start |
+| Operating system | Windows 10 64-bit |
+| Python | 3.13 |
+| GPU | No dedicated GPU |
+
+Development must prioritise lightweight implementations.
+
+Large language models must not be loaded unnecessarily.
+
+The application must support optional components that can be enabled or disabled depending on available resources.
+
+## 5. Technology Stack
+
+| Component | Initial technology |
+|---|---|
+| Programming language | Python 3.13 |
+| Desktop interface | CustomTkinter |
+| Database | SQLite |
+| NLP | spaCy |
+| Local AI | Ollama |
+| Speech recognition | VOSK |
+| Text-to-speech | pyttsx3 |
+| Local search | Whoosh |
+| System monitoring | Python and Windows APIs |
+| Version control | Git and GitHub |
+
+Technology choices may evolve when justified by performance, compatibility or architectural requirements.
+
+## 6. Major Functional Requirements
+
+### Conversational Intelligence
+- Natural language interaction.
+- Context-aware responses.
+- Follow-up understanding.
+- Conversation history.
+- Local model integration.
+
+### Personal Memory
+- Remember useful user information.
+- Retrieve previously stored information.
+- Maintain project-specific context.
+- Distinguish temporary and persistent information.
+- Allow memory inspection and correction.
+
+### Computer Interaction
+- Launch applications.
+- Search local files.
+- Organise directories.
+- Read supported documents.
+- Execute approved system commands.
+
+### Voice
+- Optional wake-word detection.
+- Speech-to-text.
+- Text-to-speech.
+- Voice activation controls.
+- Configurable audio settings.
+
+### Automation
+- Scheduled reminders.
+- Repetitive task automation.
+- Multi-step workflows.
+- Task status tracking.
+- Execution history.
+
+### System Intelligence
+- Monitor available memory.
+- Detect excessive resource consumption.
+- Monitor storage capacity.
+- Identify problematic processes.
+- Adapt component availability to system resources.
+
+## 7. Security and Permission Architecture
+
+Quanttum AI must not have unrestricted authority over the computer.
+
+Actions will be classified into three categories:
+
+**Level 1: Read-only**
+- Searching files.
+- Reading documents.
+- Checking system information.
+
+**Level 2: Reversible operations**
+- Creating folders.
+- Renaming files.
+- Organising information.
+
+These should use confirmation or a recoverable operation policy.
+
+**Level 3: Sensitive or destructive operations**
+- Deleting files.
+- Installing software.
+- Executing elevated commands.
+- Changing security settings.
+- Accessing sensitive personal information.
+
+These require explicit authorisation.
+
+The system must maintain an audit trail of executed actions.
+
+## 8. Development Roadmap
+
+| Version | Development objective |
+|---|---|
+| 0.1 | Basic interface, intent engine, SQLite and RAM monitoring |
+| 0.2 | Contextual intelligence and advanced memory |
+| 0.3 | Action engine and computer interaction |
+| 0.4 | Voice and speech processing |
+| 0.5 | Ollama and local language models |
+| 0.6 | Automation and multi-step workflows |
+| 0.7 | Document understanding and personal knowledge |
+| 0.8 | Advanced system intelligence |
+| 0.9 | Integration, optimisation and security testing |
+| 1.0 | Unified personal AI assistant |
+
+Versions represent development milestones, not guaranteed release dates.
+
+## 9. AI Development Collaboration
+
+The project will use a collaborative development model.
+
+**ChatGPT — Architecture and technical direction**
+- Define system architecture.
+- Design modules and interfaces.
+- Develop technical specifications.
+- Review implementation decisions.
+- Coordinate integration.
+- Identify architectural weaknesses.
+
+**Claude — Engineering and implementation**
+- Inspect the codebase.
+- Implement assigned modules.
+- Refactor existing code.
+- Generate and execute tests.
+- Review implementation quality.
+- Challenge architectural decisions.
+
+**Project owner — Jerry Quanttum**
+- Define requirements.
+- Approve major architectural changes.
+- Test implementations.
+- Understand and maintain the application.
+- Control project direction.
+- Approve sensitive functionality.
+
+GitHub will serve as the shared source of truth.
+
+Neither AI should assume that the other's implementation or recommendations are automatically correct.
+
+## 10. Development Rules
+
+1. Never replace working functionality without a reason.
+2. Never introduce unnecessary dependencies.
+3. Test individual modules before integration.
+4. Document significant architectural changes.
+5. Keep sensitive credentials out of source code.
+6. Preserve compatibility with the target hardware.
+7. Avoid unnecessary background processes.
+8. Maintain backups and version history.
+9. Provide understandable error messages.
+10. Explain implementation decisions so the project owner can learn.
+
+## 11. Current Project Status
+
+**Release 0.1.0 is operational.**
+
+Implemented:
+- CustomTkinter desktop interface.
+- Basic conversational interaction.
+- Rule-based intent recognition.
+- SQLite conversation persistence.
+- Date and time responses.
+- Windows RAM monitoring.
+
+Verified:
+- Application launches successfully.
+- Basic commands work.
+- Conversations survive application restarts.
+
+Outstanding:
+- Improved contextual intelligence.
+- Structured personal memory.
+- Advanced interface.
+- Computer interaction.
+- Voice integration.
+- Local language models.
+
+## 12. Definition of Success
+
+Quanttum AI will be considered successful when it can:
+
+- Operate independently of internet connectivity.
+- Understand natural language and context.
+- Recall relevant personal information.
+- Interact safely with the operating system.
+- Execute useful multi-step tasks.
+- Manage local information and documents.
+- Communicate through voice.
+- Integrate local AI models.
+- Adapt to available hardware resources.
+- Remain extensible and maintainable.
+
+**Final guiding principle:**
+
+Quanttum AI is not being built merely to answer questions. It is being built to understand, remember, assist, act and improve the way its owner interacts with technology.
+
+---
+
+**Document authority:** Project owner approval is required for fundamental changes to this constitution.
