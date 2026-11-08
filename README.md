@@ -1,4 +1,4 @@
-# Quanttum AI — Starter 0.1.0
+# Quanttum AI — 0.1.1
 
 A lightweight, offline-first Windows desktop assistant starter.
 
@@ -24,10 +24,18 @@ After setup, `run.bat` launches the app without trying to install packages again
 ## Current features
 - CustomTkinter desktop chat interface
 - SQLite conversation persistence
+- Explicit long-term memory: `remember that ...`, `what do you remember about ...`, `forget #<id>`
+- Versioned database schema (existing data is upgraded in place)
 - Basic rule-based intent recognition
 - Date and time responses
 - Windows physical RAM monitoring
 - No cloud calls and no language model required
+
+## Running the tests
+```bat
+py -3.13 -m unittest discover -s tests -t . -v
+```
+Tests use temporary databases and never touch `data/assistant.db`.
 
 ## Development notes
 This is the first foundation, not the completed assistant. The next stages are:

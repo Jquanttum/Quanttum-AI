@@ -4,6 +4,11 @@ from pathlib import Path
 
 from config import DATABASE_PATH
 
+# Bump this and add a _migrate_to_<n> method whenever the schema changes.
+# The version is stored inside the database file (PRAGMA user_version), so
+# existing databases are upgraded in place and never rebuilt.
+SCHEMA_VERSION = 1
+
 
 class Memory:
     """Stores conversation history and explicit long-term memories."""
@@ -14,10 +19,31 @@ class Memory:
         self.connection = sqlite3.connect(database_path)
         self.connection.row_factory = sqlite3.Row
 
-        self._create_tables()
+        self._migrate()
 
-    def _create_tables(self):
-        """Create the required database tables."""
+    def _migrate(self):
+        """Bring the database up to SCHEMA_VERSION, one step at a time."""
+
+        version = self.connection.execute("PRAGMA user_version").fetchone()[0]
+
+        if version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Database schema version {version} is newer than this "
+                f"version of Quanttum AI understands ({SCHEMA_VERSION}). "
+                "Update the application instead of opening this database."
+            )
+
+        for target in range(version + 1, SCHEMA_VERSION + 1):
+            getattr(self, f"_migrate_to_{target}")()
+            self.connection.execute(f"PRAGMA user_version = {target}")
+            self.connection.commit()
+
+    def _migrate_to_1(self):
+        """Baseline schema: conversation history and long-term memories.
+
+        Uses IF NOT EXISTS so databases created before versioning existed
+        (user_version 0, tables already present) are adopted without changes.
+        """
 
         self.connection.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -99,8 +125,12 @@ class Memory:
         self.connection.commit()
         return True
 
-    def search(self, query="", limit=5):
-        """Find stored facts using lightweight keyword matching."""
+    def search_records(self, query="", limit=5):
+        """Find stored facts using lightweight keyword matching.
+
+        Returns a list of (id, fact) tuples, best match first. An empty query
+        returns the most recently updated facts.
+        """
 
         limit = max(1, min(int(limit), 100))
 
@@ -109,7 +139,7 @@ class Memory:
             SELECT id, fact, updated_at
             FROM memories
             WHERE active = 1
-            ORDER BY updated_at DESC
+            ORDER BY updated_at DESC, id DESC
             """
         )
 
@@ -122,7 +152,7 @@ class Memory:
         ]
 
         if not words:
-            return [row["fact"] for row in memories[:limit]]
+            return [(row["id"], row["fact"]) for row in memories[:limit]]
 
         matches = []
 
@@ -132,15 +162,27 @@ class Memory:
 
             if score > 0:
                 matches.append(
-                    (score, memory["updated_at"], memory["fact"])
+                    (score, memory["updated_at"], memory["id"], memory["fact"])
                 )
 
-        matches.sort(
-            key=lambda item: (item[0], item[1]),
-            reverse=True
-        )
+        matches.sort(key=lambda item: item[:3], reverse=True)
 
-        return [item[2] for item in matches[:limit]]
+        return [(item[2], item[3]) for item in matches[:limit]]
+
+    def search(self, query="", limit=5):
+        """Like search_records, but returns only the fact text."""
+
+        return [fact for _, fact in self.search_records(query, limit)]
+
+    def get(self, memory_id):
+        """Return the text of an active memory, or None."""
+
+        row = self.connection.execute(
+            "SELECT fact FROM memories WHERE id = ? AND active = 1",
+            (memory_id,)
+        ).fetchone()
+
+        return row["fact"] if row else None
 
     def forget(self, memory_id):
         """Deactivate a stored memory without destroying its record."""

@@ -98,7 +98,7 @@ Never expose passwords, tokens, private databases or personal information.
 
 ## 7. Current development status
 
-Version: 0.1.0
+Version: 0.1.1
 
 Implemented:
 - CustomTkinter graphical interface.
@@ -106,6 +106,8 @@ Implemented:
 - SQLite conversation persistence.
 - Basic date and time responses.
 - RAM monitoring.
+- Explicit long-term memory (remember, keyword recall, forget by ID) in the `memories` table.
+- Versioned SQLite schema (`PRAGMA user_version`) and a stdlib `unittest` suite in `tests/`.
 
 Not yet implemented:
 - Advanced contextual intelligence.

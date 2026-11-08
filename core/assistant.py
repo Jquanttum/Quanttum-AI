@@ -4,33 +4,65 @@ import re
 
 from core.intent import detect_intent
 
+# Memory command patterns. They are matched against the message with extra
+# whitespace collapsed and, for recall/forget, trailing ? . ! removed.
+FORGET_RE = re.compile(
+    r"^forget(?:\s+memory)?\s+#?(\d+)$",
+    re.IGNORECASE
+)
+
+REMEMBER_RE = re.compile(
+    r"^(?:remember(?:\s+that)?|don't\s+forget(?:\s+that)?|"
+    r"do\s+not\s+forget(?:\s+that)?)\s+(.+)$",
+    re.IGNORECASE
+)
+
+RECALL_ALL_RE = re.compile(
+    r"^(?:what\s+do\s+you\s+remember(?:\s+about\s+(?:me|myself))?|"
+    r"what\s+have\s+you\s+remembered(?:\s+about\s+(?:me|myself))?|"
+    r"(?:show|list)(?:\s+all)?(?:\s+my)?\s+memories)$",
+    re.IGNORECASE
+)
+
+# The topic is mandatory (\s+(.+)), so "Recalling last week" no longer
+# matches the word "recall".
+RECALL_SPECIFIC_RE = re.compile(
+    r"^(?:what\s+do\s+you\s+remember\s+about|"
+    r"what\s+have\s+you\s+remembered\s+about|recall|"
+    r"search\s+my\s+memories\s+for|find\s+in\s+my\s+memories)\s+(.+)$",
+    re.IGNORECASE
+)
+
+# "Show everything" must not be capped at the default search limit of 5.
+LIST_LIMIT = 50
+
 
 class Assistant:
     def __init__(self, memory):
         self.memory = memory
 
-    def _extract_memory_query(self, message):
-        """Remove recall instructions and retain the actual search topic."""
-
-        query = re.sub(
-            r"^(what do you remember about|what have you remembered about|"
-            r"recall|search my memories for|find in my memories)\s*",
-            "",
-            message.strip(),
-            flags=re.IGNORECASE
-        )
-
-        return query.strip(" ?.!")
+    @staticmethod
+    def _format_records(records):
+        return "\n".join(f"#{memory_id}  {fact}" for memory_id, fact in records)
 
     def _handle_memory_command(self, message):
-        """Handle explicit memory storage and retrieval requests."""
+        """Handle explicit memory storage, retrieval and forgetting."""
 
-        remember_match = re.match(
-            r"^(?:remember(?:\s+that)?|don't forget(?:\s+that)?|"
-            r"do not forget(?:\s+that)?)\s+(.+)$",
-            message.strip(),
-            flags=re.IGNORECASE
-        )
+        text = " ".join(message.split())
+        spoken = text.rstrip(" ?.!")
+
+        forget_match = FORGET_RE.match(spoken)
+
+        if forget_match:
+            memory_id = int(forget_match.group(1))
+            fact = self.memory.get(memory_id)
+
+            if fact is None or not self.memory.forget(memory_id):
+                return f"I don't have an active memory with ID #{memory_id}."
+
+            return f"I've forgotten memory #{memory_id}: {fact}"
+
+        remember_match = REMEMBER_RE.match(text)
 
         if remember_match:
             fact = remember_match.group(1).strip()
@@ -40,48 +72,31 @@ class Assistant:
 
             return "I couldn't save that memory. Please try again."
 
-        recall_all = re.match(
-            r"^(what do you remember about me|"
-            r"what do you remember|show my memories|"
-            r"list my memories|what have you remembered)$",
-            message.strip(),
-            flags=re.IGNORECASE
-        )
+        if RECALL_ALL_RE.match(spoken):
+            records = self.memory.search_records(limit=LIST_LIMIT)
 
-        if recall_all:
-            memories = self.memory.search()
-
-            if not memories:
+            if not records:
                 return "I don't have any saved long-term memories yet."
 
-            results = "\n".join(
-                f"{index}. {fact}"
-                for index, fact in enumerate(memories, start=1)
+            return (
+                "Here is what I remember:\n"
+                f"{self._format_records(records)}\n\n"
+                "To remove one, say: forget #<number>"
             )
 
-            return f"Here is what I remember:\n{results}"
+        recall_match = RECALL_SPECIFIC_RE.match(spoken)
 
-        recall_specific = re.match(
-            r"^(?:what do you remember about|"
-            r"what have you remembered about|recall|"
-            r"search my memories for|find in my memories)\s*(.*)$",
-            message.strip(),
-            flags=re.IGNORECASE
-        )
+        if recall_match:
+            query = recall_match.group(1).strip()
+            records = self.memory.search_records(query)
 
-        if recall_specific:
-            query = self._extract_memory_query(message)
-            memories = self.memory.search(query)
-
-            if not memories:
+            if not records:
                 return f"I couldn't find any saved memories related to '{query}'."
 
-            results = "\n".join(
-                f"{index}. {fact}"
-                for index, fact in enumerate(memories, start=1)
+            return (
+                "I found these related memories:\n"
+                f"{self._format_records(records)}"
             )
-
-            return f"I found these related memories:\n{results}"
 
         return None
 
@@ -122,7 +137,8 @@ class Assistant:
                 "Try these commands:\n"
                 "- Remember that I prefer Python.\n"
                 "- What do you remember about me?\n"
-                "- What do you remember about Python?\n\n"
+                "- What do you remember about Python?\n"
+                "- Forget #1 (use the number shown in the memory list)\n\n"
                 "More advanced intelligence, voice and automation "
                 "are planned for future versions."
             )
