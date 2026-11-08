@@ -1,4 +1,4 @@
-# Quanttum AI — 0.1.1
+# Quanttum AI — 0.2.0-dev
 
 A lightweight, offline-first Windows desktop assistant starter.
 
@@ -24,12 +24,28 @@ After setup, `run.bat` launches the app without trying to install packages again
 ## Current features
 - CustomTkinter desktop chat interface
 - SQLite conversation persistence
+- Intent router: messages become structured `Intent` objects and are dispatched to small handlers
+- Short-term context: `forget that` works right after a memory is saved or shown
 - Explicit long-term memory: `remember that ...`, `what do you remember about ...`, `forget #<id>`
 - Versioned database schema (existing data is upgraded in place)
 - Basic rule-based intent recognition
 - Date and time responses
 - Windows physical RAM monitoring
 - No cloud calls and no language model required
+
+## Project structure
+| Path | Responsibility |
+|---|---|
+| `main.py`, `interface/window.py` | Start the app; CustomTkinter chat window |
+| `core/assistant.py` | **Core**: receives text, parses the intent, routes to a handler, saves the exchange |
+| `core/intent.py` | `Intent` object and rule-based `parse_intent()` |
+| `core/context.py` | Short-term conversation state and the `Environment` handlers receive |
+| `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`) plus the registry in `__init__.py` |
+| `core/memory.py` | SQLite storage: conversation history and long-term memories, versioned schema |
+| `core/resource_monitor.py` | Windows RAM monitoring |
+| `tests/` | Standard-library `unittest` suite |
+
+To add a capability: write a handler in `core/handlers/`, add its name to `INTENT_NAMES`, teach `parse_intent()` to produce it, and register it in `build_registry()`. A test fails if an intent has no handler.
 
 ## Running the tests
 ```bat

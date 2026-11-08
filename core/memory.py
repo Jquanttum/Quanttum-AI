@@ -103,12 +103,15 @@ class Memory:
     # -----------------------------------------
 
     def remember(self, fact):
-        """Save or update an explicitly provided fact."""
+        """Save or update an explicitly provided fact.
+
+        Returns the memory's ID, or None if the fact was empty.
+        """
 
         fact = " ".join(fact.split())
 
         if not fact:
-            return False
+            return None
 
         self.connection.execute(
             """
@@ -122,8 +125,14 @@ class Memory:
             (fact,)
         )
 
+        # lastrowid is unreliable after an upsert that updated an existing
+        # row, so look the ID up (the column is case-insensitive).
+        row = self.connection.execute(
+            "SELECT id FROM memories WHERE fact = ?", (fact,)
+        ).fetchone()
+
         self.connection.commit()
-        return True
+        return row["id"]
 
     def search_records(self, query="", limit=5):
         """Find stored facts using lightweight keyword matching.

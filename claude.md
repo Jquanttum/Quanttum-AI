@@ -98,7 +98,7 @@ Never expose passwords, tokens, private databases or personal information.
 
 ## 7. Current development status
 
-Version: 0.1.1
+Version: 0.2.0-dev
 
 Implemented:
 - CustomTkinter graphical interface.
@@ -107,6 +107,8 @@ Implemented:
 - Basic date and time responses.
 - RAM monitoring.
 - Explicit long-term memory (remember, keyword recall, forget by ID) in the `memories` table.
+- Structured `Intent` objects, handler registry and thin Core orchestrator (`core/assistant.py`, `core/intent.py`, `core/handlers/`).
+- One-turn conversation context so follow-ups like "forget that" resolve safely (`core/context.py`).
 - Versioned SQLite schema (`PRAGMA user_version`) and a stdlib `unittest` suite in `tests/`.
 
 Not yet implemented:
