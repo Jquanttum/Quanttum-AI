@@ -18,8 +18,13 @@ INTENT_NAMES = (
     "help",
     "remember",
     "recall_all",
+    "recall_category",
     "recall",
+    "related",
     "forget",
+    "confirm_yes",
+    "confirm_no",
+    "confirm_alt",
     "unknown",
 )
 
@@ -59,6 +64,12 @@ FORGET_REFERENCE_RE = re.compile(
     re.IGNORECASE
 )
 
+# "remember to call X" is a task, not a fact about the user.
+TASK_RE = re.compile(
+    r"^(?:remember|don't\s+forget|do\s+not\s+forget)\s+to\s+(.+)$",
+    re.IGNORECASE
+)
+
 REMEMBER_RE = re.compile(
     r"^(?:remember(?:\s+that)?|don't\s+forget(?:\s+that)?|"
     r"do\s+not\s+forget(?:\s+that)?)\s+(.+)$",
@@ -69,6 +80,24 @@ RECALL_ALL_RE = re.compile(
     r"^(?:what\s+do\s+you\s+remember(?:\s+about\s+(?:me|myself))?|"
     r"what\s+have\s+you\s+remembered(?:\s+about\s+(?:me|myself))?|"
     r"(?:show|list)(?:\s+all)?(?:\s+my)?\s+memories)$",
+    re.IGNORECASE
+)
+
+CATEGORY_WORDS = {
+    "task": "task", "tasks": "task", "todo": "task", "todos": "task",
+    "to-do": "task", "to-dos": "task",
+    "preference": "preference", "preferences": "preference",
+    "fact": "general", "facts": "general",
+}
+
+RECALL_CATEGORY_RE = re.compile(
+    r"^(?:what\s+do\s+you\s+remember\s+about\s+my|show\s+my|list\s+my)"
+    r"\s+(tasks?|to-?dos?|preferences?|facts?)$",
+    re.IGNORECASE
+)
+
+RELATED_RE = re.compile(
+    r"^(?:what(?:'s|\s+is)\s+)?related\s+to\s+#?(\d+)$",
     re.IGNORECASE
 )
 
@@ -115,6 +144,13 @@ _HELP = {
     "what can i ask you",
 }
 
+# Answers to a question the assistant just asked. They only mean something
+# when a question is pending; otherwise the handler says nothing is waiting.
+_YES = {"yes", "y", "yeah", "yep", "replace", "replace it", "confirm", "do it"}
+_NO = {"no", "n", "nope", "cancel", "never mind", "nevermind", "don't",
+       "dont", "no don't", "discard"}
+_ALT = {"keep both", "both", "save both", "keep them both", "keep both of them"}
+
 # Time/date questions are short. Ignoring long sentences avoids treating
 # "by the time I get home..." as a request for the clock.
 _MAX_WORDS_FOR_TIME_DATE = 7
@@ -134,7 +170,7 @@ def _matches_any(patterns, text):
 def _parse_memory_command(message):
     """Return an Intent for a memory command, or None."""
 
-    text = " ".join(message.split())
+    text = " ".join(message.split()).replace("\u2019", "'")
     spoken = text.rstrip(" ?.!")
 
     match = FORGET_ID_RE.match(spoken)
@@ -144,12 +180,26 @@ def _parse_memory_command(message):
     if FORGET_REFERENCE_RE.match(spoken):
         return Intent("forget", {"reference": "last"}, 1.0, message)
 
+    match = TASK_RE.match(text)
+    if match:
+        entities = {"fact": match.group(1).strip(), "category": "task"}
+        return Intent("remember", entities, 1.0, message)
+
     match = REMEMBER_RE.match(text)
     if match:
         return Intent("remember", {"fact": match.group(1).strip()}, 1.0, message)
 
     if RECALL_ALL_RE.match(spoken):
         return Intent("recall_all", {}, 1.0, message)
+
+    match = RECALL_CATEGORY_RE.match(spoken)
+    if match:
+        category = CATEGORY_WORDS[match.group(1).casefold()]
+        return Intent("recall_category", {"category": category}, 1.0, message)
+
+    match = RELATED_RE.match(spoken)
+    if match:
+        return Intent("related", {"id": int(match.group(1))}, 1.0, message)
 
     match = RECALL_SPECIFIC_RE.match(spoken)
     if match:
@@ -166,6 +216,15 @@ def _parse_basic(message):
 
     if text in _HELP:
         return "help"
+
+    if text in _YES:
+        return "confirm_yes"
+
+    if text in _NO:
+        return "confirm_no"
+
+    if text in _ALT:
+        return "confirm_alt"
 
     if word_count <= _MAX_WORDS_FOR_TIME_DATE:
         if _matches_any(_TIME_PATTERNS, text):

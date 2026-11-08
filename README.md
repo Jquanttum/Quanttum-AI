@@ -1,4 +1,4 @@
-# Quanttum AI — 0.2.0-dev
+# Quanttum AI — 0.2.0
 
 A lightweight, offline-first Windows desktop assistant starter.
 
@@ -26,8 +26,11 @@ After setup, `run.bat` launches the app without trying to install packages again
 - SQLite conversation persistence
 - Intent router: messages become structured `Intent` objects and are dispatched to small handlers
 - Short-term context: `forget that` works right after a memory is saved or shown
-- Explicit long-term memory: `remember that ...`, `what do you remember about ...`, `forget #<id>`
-- Versioned database schema (existing data is upgraded in place)
+- Long-term memory with ranked full-text search (SQLite FTS5, stemming, BM25): `remember that ...`, `what do you remember about ...`, `forget #<id>`
+- Tasks kept apart from facts: `remember to ...`, `show my tasks`, `show my preferences` (no reminders or alerts yet)
+- Updating facts: a similar new fact triggers "replace / keep both / no?" instead of a silent duplicate; replaced facts stay in history
+- Related facts: `what's related to #3?`
+- Versioned database schema; existing data is upgraded in place, in one transaction, after an automatic backup (`data/assistant.db.bak-v<old version>`)
 - Basic rule-based intent recognition
 - Date and time responses
 - Windows physical RAM monitoring
@@ -40,8 +43,9 @@ After setup, `run.bat` launches the app without trying to install packages again
 | `core/assistant.py` | **Core**: receives text, parses the intent, routes to a handler, saves the exchange |
 | `core/intent.py` | `Intent` object and rule-based `parse_intent()` |
 | `core/context.py` | Short-term conversation state and the `Environment` handlers receive |
-| `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`) plus the registry in `__init__.py` |
-| `core/memory.py` | SQLite storage: conversation history and long-term memories, versioned schema |
+| `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`, `confirmation.py`) plus the registry in `__init__.py` |
+| `core/memory.py` | SQLite storage: conversation history, long-term memories (status, category, provenance), FTS5 search, migrations |
+| `core/textutils.py` | Pure text helpers: stopwords, search-term extraction, FTS query building, categorisation |
 | `core/resource_monitor.py` | Windows RAM monitoring |
 | `tests/` | Standard-library `unittest` suite |
 

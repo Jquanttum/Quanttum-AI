@@ -21,8 +21,11 @@ def help(intent, env):
         "- Remember that I prefer Python.\n"
         "- What do you remember about me?\n"
         "- What do you remember about Python?\n"
+        "- Remember to call my supervisor (saved as a task)\n"
+        "- Show my tasks / Show my preferences\n"
         "- Forget #1 (use the number shown in the memory list)\n"
-        "- Forget that (right after I save or show a single memory)\n\n"
+        "- Forget that (right after I save or show a single memory)\n"
+        "- What's related to #1?\n\n"
         "More advanced intelligence, voice and automation "
         "are planned for future versions."
     )
@@ -31,10 +34,11 @@ def help(intent, env):
 def unknown(intent, env):
     """Fallback: offer any stored facts that share words with the message."""
 
-    memories = env.memory.search(intent.raw)
+    records = env.memory.find(intent.raw, limit=3)
 
-    if memories:
-        results = "\n".join(f"- {fact}" for fact in memories)
+    if records:
+        env.memory.touch([record.id for record in records])
+        results = "\n".join(f"- {record.fact}" for record in records)
 
         return (
             "I found some stored information that may be "

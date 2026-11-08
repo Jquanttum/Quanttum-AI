@@ -28,8 +28,8 @@ class Assistant:
         if not message:
             return "Please enter a message."
 
-        self.memory.save("user", message)
         self.state.begin_turn()
+        self.state.message_id = self.memory.save("user", message)
 
         intent = parse_intent(message)
         handler = self.handlers.get(intent.name, self.handlers["unknown"])

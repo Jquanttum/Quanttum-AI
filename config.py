@@ -1,7 +1,7 @@
 from pathlib import Path
 
 APP_NAME = "QUANTTUM AI"
-APP_VERSION = "0.2.0-dev"
+APP_VERSION = "0.2.0"
 
 # Anchor the database to the project folder so it is the same file no matter
 # which directory the app is launched from.

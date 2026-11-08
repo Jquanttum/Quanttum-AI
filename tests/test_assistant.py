@@ -40,8 +40,11 @@ class AssistantTests(unittest.TestCase):
         self.assertNotIn("related to", answer)
 
     def test_listing_is_not_capped_at_five(self):
-        for number in range(1, 9):
-            self.ask(f"Remember that fact number {number}")
+        for fact in ("I own a red bicycle", "My dog is called Max",
+                     "The lab opens at nine", "Tea is better than coffee",
+                     "My sister lives in Tamale", "Exams start in December",
+                     "I study forensic science", "The library closes early"):
+            self.ask(f"Remember that {fact}")
         answer = self.ask("What do you remember?")
         listed = [line for line in answer.splitlines() if line.startswith("#")]
         self.assertEqual(len(listed), 8)

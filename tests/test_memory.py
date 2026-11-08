@@ -44,9 +44,9 @@ class MemoryTests(unittest.TestCase):
         self.assertIsNone(self.memory.get(memory_id))
 
         row = self.memory.connection.execute(
-            "SELECT active FROM memories WHERE id = ?", (memory_id,)
+            "SELECT status FROM memories WHERE id = ?", (memory_id,)
         ).fetchone()
-        self.assertEqual(row["active"], 0)
+        self.assertEqual(row["status"], "forgotten")
 
     def test_forget_unknown_or_repeated(self):
         self.assertFalse(self.memory.forget(999))

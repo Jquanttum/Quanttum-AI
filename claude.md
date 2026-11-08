@@ -98,7 +98,7 @@ Never expose passwords, tokens, private databases or personal information.
 
 ## 7. Current development status
 
-Version: 0.2.0-dev
+Version: 0.2.0
 
 Implemented:
 - CustomTkinter graphical interface.
@@ -109,11 +109,14 @@ Implemented:
 - Explicit long-term memory (remember, keyword recall, forget by ID) in the `memories` table.
 - Structured `Intent` objects, handler registry and thin Core orchestrator (`core/assistant.py`, `core/intent.py`, `core/handlers/`).
 - One-turn conversation context so follow-ups like "forget that" resolve safely (`core/context.py`).
+- Memory Engine v2: FTS5/BM25 ranked search with stemming, categories (general/preference/task), similar-fact detection with replace-confirmation, superseded history, provenance (`source_message_id`), related facts.
+- Pending-confirmation mechanism (`PendingConfirmation`), reusable for Level 2/3 action approvals.
 - Versioned SQLite schema (`PRAGMA user_version`) and a stdlib `unittest` suite in `tests/`.
 
 Not yet implemented:
 - Advanced contextual intelligence.
-- Semantic and structured long-term memory.
+- Semantic (embedding) memory search.
+- Reminder scheduling and notifications (tasks are stored but nothing alerts the user).
 - Computer action execution.
 - Voice interaction.
 - Local LLM integration.
