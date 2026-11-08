@@ -252,3 +252,86 @@ class RelatedAndFallbackTests(CoreTestCase):
         row = self.memory.connection.execute(
             "SELECT last_used_at FROM memories").fetchone()
         self.assertIsNotNone(row["last_used_at"])
+
+
+class FeatureCommandTests(CoreTestCase):
+    def setUp(self):
+        super().setUp()
+        from core.features import FeatureRegistry
+        self.features = FeatureRegistry(
+            memory_status=lambda: {"total_gb": 3.83, "available_gb": 1.5,
+                                   "percent": 60})
+        self.assistant = Assistant(self.memory, clock=self.clock,
+                                   features=self.features)
+
+    def test_show_features_lists_profile_ram_and_features(self):
+        answer = self.ask("show features")
+        self.assertIn("Profile: lite", answer)
+        self.assertIn("3.8 GB", answer)
+        self.assertIn("[on]  RAM monitor (ram_monitor)", answer)
+        self.assertIn("[n/a] Local AI model (local_llm)", answer)
+        self.assertIn("planned for v0.5", answer)
+
+    def test_toggle_by_friendly_name_and_undo_hint(self):
+        answer = self.ask("disable ram monitor")
+        self.assertIn("turned it off", answer)
+        self.assertIn("now OFF", answer)
+        self.assertIn("To undo: enable ram_monitor", answer)
+        self.assertFalse(self.features.is_enabled("ram_monitor"))
+
+        self.assertIn("now ON", self.ask("turn on ram"))
+        self.assertTrue(self.features.is_enabled("ram_monitor"))
+
+    def test_reset_feature(self):
+        self.ask("disable ram")
+        answer = self.ask("reset feature ram")
+        self.assertIn("back to the lite profile default", answer)
+        self.assertTrue(self.features.is_enabled("ram_monitor"))
+
+    def test_enabling_an_unbuilt_feature_is_saved_but_honest(self):
+        answer = self.ask("enable local model")
+        self.assertIn("can't run yet", answer)
+        self.assertIn("planned for v0.5", answer)
+        self.assertTrue(self.features.override("local_llm"))
+
+    def test_ambiguous_and_unknown_names(self):
+        self.assertIn("could mean", self.ask("enable voice"))
+        answer = self.ask("turn off the lights")
+        self.assertIn("don't have a feature called", answer)
+        self.assertIn("ram_monitor", answer)
+
+    def test_show_profile_recommends_without_switching(self):
+        features = self.features
+        features._memory_status = lambda: {"total_gb": 7.8,
+                                           "available_gb": 4, "percent": 40}
+        answer = self.ask("show profile")
+        self.assertIn("Recommended for this PC: standard", answer)
+        self.assertEqual(features.profile, "lite")        # never silent
+
+    def test_set_profile_reports_what_changed(self):
+        self.features._memory_status = lambda: {"total_gb": 15.9,
+                                                "available_gb": 9, "percent": 40}
+        self.features._features["ram_monitor"] = type(
+            self.features._features["ram_monitor"])(
+            "ram_monitor", "RAM monitor", "x", frozenset({"full"}))
+        answer = self.ask("use profile full")
+        self.assertIn("Profile set to full", answer)
+        self.assertEqual(self.features.profile, "full")
+
+    def test_set_profile_warns_when_the_pc_is_too_small(self):
+        answer = self.ask("use profile standard")
+        self.assertIn("meant for about 7 GB", answer)
+
+    def test_unwritable_settings_are_reported_not_crashed(self):
+        import tempfile
+        from pathlib import Path
+        from core.features import FeatureRegistry
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            blocker = Path(tmp) / "blocker"
+            blocker.write_text("file")
+            registry = FeatureRegistry(blocker / "settings.json",
+                                       memory_status=lambda: None)
+            assistant = Assistant(self.memory, features=registry)
+            answer = assistant.respond("disable ram monitor")
+            self.assertIn("couldn't save your settings", answer)
+            self.assertTrue(registry.is_enabled("ram_monitor"))

@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 
 from core.context import ConversationState, Environment
+from core.features import FeatureRegistry
 from core.handlers import build_registry
 from core.intent import parse_intent
 
@@ -16,10 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 class Assistant:
-    def __init__(self, memory, clock=datetime.now):
+    def __init__(self, memory, clock=datetime.now, features=None):
         self.memory = memory
         self.state = ConversationState()
-        self.env = Environment(memory=memory, state=self.state, clock=clock)
+        # Without an explicit registry, use one that never touches disk.
+        self.features = features if features is not None else FeatureRegistry()
+        self.env = Environment(memory=memory, state=self.state, clock=clock,
+                               features=self.features)
         self.handlers = build_registry()
 
     def respond(self, message):

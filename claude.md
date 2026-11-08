@@ -98,7 +98,7 @@ Never expose passwords, tokens, private databases or personal information.
 
 ## 7. Current development status
 
-Version: 0.2.0
+Version: 0.2.1
 
 Implemented:
 - CustomTkinter graphical interface.
@@ -110,10 +110,11 @@ Implemented:
 - Structured `Intent` objects, handler registry and thin Core orchestrator (`core/assistant.py`, `core/intent.py`, `core/handlers/`).
 - One-turn conversation context so follow-ups like "forget that" resolve safely (`core/context.py`).
 - Memory Engine v2: FTS5/BM25 ranked search with stemming, categories (general/preference/task), similar-fact detection with replace-confirmation, superseded history, provenance (`source_message_id`), related facts.
+- Capability profiles and feature registry (`core/features.py`): profile presets, user overrides saved atomically to `data/settings.json`, RAM/package requirement checks, lazy-import gate. Features stay `planned` until their code exists.
 - Pending-confirmation mechanism (`PendingConfirmation`), reusable for Level 2/3 action approvals.
 - Versioned SQLite schema (`PRAGMA user_version`) and a stdlib `unittest` suite in `tests/`.
 
-Not yet implemented:
+Not yet implemented (listed as `planned` in the feature registry):
 - Advanced contextual intelligence.
 - Semantic (embedding) memory search.
 - Reminder scheduling and notifications (tasks are stored but nothing alerts the user).

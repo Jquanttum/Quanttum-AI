@@ -103,11 +103,50 @@ class ParseIntentTests(unittest.TestCase):
         self.assertEqual(parse_intent("yes I would like some tea").name,
                          "unknown")
 
+    def test_show_features_and_profile(self):
+        for text in ("show features", "Show my settings", "features", "list all toggles"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "show_features")
+        for text in ("show profile", "what's my profile", "profile"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "show_profile")
+
+    def test_set_profile(self):
+        for text in ("use profile standard", "Use the full profile",
+                     "switch to lite profile", "set profile to standard"):
+            with self.subTest(text=text):
+                intent = parse_intent(text)
+                self.assertEqual(intent.name, "set_profile")
+                self.assertIn(intent.entities["profile"],
+                              ("lite", "standard", "full"))
+        self.assertEqual(parse_intent("use profile ultra").name, "unknown")
+
+    def test_enable_disable_reset(self):
+        cases = {
+            "enable ram monitor": ("ram monitor", True),
+            "Disable the local model": ("the local model", False),
+            "turn on voice input": ("voice input", True),
+            "turn off ram": ("ram", False),
+            "enable feature local_llm": ("local_llm", True),
+            "reset feature ram": ("ram", None),
+        }
+        for text, (feature, enabled) in cases.items():
+            with self.subTest(text=text):
+                intent = parse_intent(text)
+                self.assertEqual(intent.name, "set_feature")
+                self.assertEqual(intent.entities,
+                                 {"feature": feature, "enabled": enabled})
+
+    def test_memory_commands_win_over_settings_commands(self):
+        self.assertEqual(parse_intent("remember that I use profile lite").name,
+                         "remember")
+
     def test_names_are_all_declared(self):
         samples = ["hello", "what time is it", "what day is it", "help",
                    "remember that x", "what do you remember", "recall x",
                    "forget #1", "show my tasks", "related to #1", "yes", "no",
-                   "keep both", "zzz"]
+                   "keep both", "show features", "show profile",
+                   "enable ram", "use profile lite", "zzz"]
         for text in samples:
             self.assertIn(parse_intent(text).name, INTENT_NAMES)
 

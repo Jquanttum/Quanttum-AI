@@ -1,4 +1,4 @@
-# Quanttum AI — 0.2.0
+# Quanttum AI — 0.2.1
 
 A lightweight, offline-first Windows desktop assistant starter.
 
@@ -30,6 +30,7 @@ After setup, `run.bat` launches the app without trying to install packages again
 - Tasks kept apart from facts: `remember to ...`, `show my tasks`, `show my preferences` (no reminders or alerts yet)
 - Updating facts: a similar new fact triggers "replace / keep both / no?" instead of a silent duplicate; replaced facts stay in history
 - Related facts: `what's related to #3?`
+- Capability profiles (`lite` / `standard` / `full`) and per-feature toggles: `show features`, `enable ram monitor`, `use profile standard`. Settings are saved in `data/settings.json`. The app recommends a profile from your installed RAM but never switches on its own.
 - Versioned database schema; existing data is upgraded in place, in one transaction, after an automatic backup (`data/assistant.db.bak-v<old version>`)
 - Basic rule-based intent recognition
 - Date and time responses
@@ -43,7 +44,8 @@ After setup, `run.bat` launches the app without trying to install packages again
 | `core/assistant.py` | **Core**: receives text, parses the intent, routes to a handler, saves the exchange |
 | `core/intent.py` | `Intent` object and rule-based `parse_intent()` |
 | `core/context.py` | Short-term conversation state and the `Environment` handlers receive |
-| `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`, `confirmation.py`) plus the registry in `__init__.py` |
+| `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`, `settings_commands.py`, `confirmation.py`) plus the registry in `__init__.py` |
+| `core/features.py` | Profiles, feature registry, overrides, requirement checks (RAM, packages), lazy-import gate |
 | `core/memory.py` | SQLite storage: conversation history, long-term memories (status, category, provenance), FTS5 search, migrations |
 | `core/textutils.py` | Pure text helpers: stopwords, search-term extraction, FTS query building, categorisation |
 | `core/resource_monitor.py` | Windows RAM monitoring |
@@ -56,6 +58,15 @@ To add a capability: write a handler in `core/handlers/`, add its name to `INTEN
 py -3.13 -m unittest discover -s tests -t . -v
 ```
 Tests use temporary databases and never touch `data/assistant.db`.
+
+An optional test drives the real window (it briefly opens one, so it is off by default):
+```powershell
+$env:QUANTTUM_GUI_TESTS = "1"
+py -3.13 -m unittest tests.test_gui_smoke -v
+```
+
+## Adding an optional feature
+Heavy features must not cost memory when they are off. Register a `Feature` in `core/features.py` (set its default profiles, `min_total_gb`, required `packages`, and clear `planned` once the code exists), then load its libraries only through `registry.import_module("<key>", "<module>")` at first use.
 
 ## Development notes
 This is the first foundation, not the completed assistant. The next stages are:

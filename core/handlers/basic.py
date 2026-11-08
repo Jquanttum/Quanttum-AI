@@ -25,7 +25,10 @@ def help(intent, env):
         "- Show my tasks / Show my preferences\n"
         "- Forget #1 (use the number shown in the memory list)\n"
         "- Forget that (right after I save or show a single memory)\n"
-        "- What's related to #1?\n\n"
+        "- What's related to #1?\n"
+        "- Show features / Show profile\n"
+        "- Enable ram monitor / Disable ram monitor\n"
+        "- Use profile standard (lite, standard or full)\n\n"
         "More advanced intelligence, voice and automation "
         "are planned for future versions."
     )

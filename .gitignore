@@ -19,6 +19,10 @@ data/*.sqlite
 data/*.sqlite3
 data/*.bak*
 
+# Personal settings (profile and feature toggles)
+data/settings.json
+data/settings.json.*
+
 # Logs
 *.log
 

@@ -22,6 +22,10 @@ INTENT_NAMES = (
     "recall",
     "related",
     "forget",
+    "show_features",
+    "show_profile",
+    "set_feature",
+    "set_profile",
     "confirm_yes",
     "confirm_no",
     "confirm_alt",
@@ -109,6 +113,72 @@ RECALL_SPECIFIC_RE = re.compile(
     r"search\s+my\s+memories\s+for|find\s+in\s+my\s+memories)\s+(.+)$",
     re.IGNORECASE
 )
+
+# ---------------------------------------------------------------------------
+# Settings commands: profiles and feature toggles.
+# ---------------------------------------------------------------------------
+
+SHOW_FEATURES_RE = re.compile(
+    r"^(?:(?:show|list)(?:\s+(?:my|all|the))?\s+)?(?:features|settings|toggles)$",
+    re.IGNORECASE
+)
+
+SHOW_PROFILE_RE = re.compile(
+    r"^(?:(?:show|what(?:'s|\s+is))(?:\s+(?:my|the|current))*\s+)?profile$",
+    re.IGNORECASE
+)
+
+SET_PROFILE_RES = (
+    re.compile(
+        r"^(?:use|set|switch\s+to)\s+(?:the\s+)?(lite|standard|full)\s+profile$",
+        re.IGNORECASE),
+    re.compile(
+        r"^(?:use|set|switch\s+to)\s+profile\s+(?:to\s+)?(lite|standard|full)$",
+        re.IGNORECASE),
+)
+
+SET_FEATURE_RE = re.compile(
+    r"^(enable|disable|turn\s+on|turn\s+off)\s+(?:feature\s+)?(.+)$",
+    re.IGNORECASE
+)
+
+RESET_FEATURE_RE = re.compile(
+    r"^reset\s+feature\s+(.+)$",
+    re.IGNORECASE
+)
+
+
+def _parse_settings_command(message):
+    """Return an Intent for a settings command, or None."""
+
+    text = " ".join(message.split()).replace("\u2019", "'")
+    spoken = text.rstrip(" ?.!")
+
+    if SHOW_FEATURES_RE.match(spoken):
+        return Intent("show_features", {}, 1.0, message)
+
+    if SHOW_PROFILE_RE.match(spoken):
+        return Intent("show_profile", {}, 1.0, message)
+
+    for pattern in SET_PROFILE_RES:
+        match = pattern.match(spoken)
+        if match:
+            entities = {"profile": match.group(1).casefold()}
+            return Intent("set_profile", entities, 1.0, message)
+
+    match = RESET_FEATURE_RE.match(spoken)
+    if match:
+        entities = {"feature": match.group(1).strip(), "enabled": None}
+        return Intent("set_feature", entities, 1.0, message)
+
+    match = SET_FEATURE_RE.match(spoken)
+    if match:
+        enabled = match.group(1).casefold().split()[-1] in ("enable", "on")
+        entities = {"feature": match.group(2).strip(), "enabled": enabled}
+        return Intent("set_feature", entities, 1.0, message)
+
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Basic conversational intents. Matched on whole words/phrases (\b), never on
@@ -242,6 +312,9 @@ def parse_intent(message):
     """Turn a message into an Intent. Memory commands take priority."""
 
     intent = _parse_memory_command(message)
+
+    if intent is None:
+        intent = _parse_settings_command(message)
 
     if intent is not None:
         return intent

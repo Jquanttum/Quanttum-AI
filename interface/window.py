@@ -1,8 +1,9 @@
 import customtkinter as ctk
 from core.memory import Memory
 from core.assistant import Assistant
+from core.features import FeatureRegistry
 from core.resource_monitor import get_memory_status
-from config import APP_NAME, APP_VERSION, MAX_RAM_WARNING_PERCENT
+from config import APP_NAME, APP_VERSION, MAX_RAM_WARNING_PERCENT, SETTINGS_PATH
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -14,7 +15,8 @@ class QuanttumApp(ctk.CTk):
         self.geometry("900x620")
         self.minsize(680, 480)
         self.memory = Memory()
-        self.assistant = Assistant(self.memory)
+        self.features = FeatureRegistry(SETTINGS_PATH)
+        self.assistant = Assistant(self.memory, features=self.features)
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -55,6 +57,8 @@ class QuanttumApp(ctk.CTk):
         self.resource_label.grid(row=3, column=0, padx=18, pady=(0, 10), sticky="w")
 
         self.write_chat("Quanttum AI", "System initialised. Type 'help' to see available commands.")
+        if self.features.settings_error:
+            self.write_chat("Quanttum AI", self.features.settings_error)
         for role, content, _ in self.memory.recent(20):
             if role == "user":
                 self.write_chat("You", content)
@@ -79,6 +83,15 @@ class QuanttumApp(ctk.CTk):
         self.write_chat("Quanttum AI", response)
 
     def update_resource_status(self):
+        # The toggle is re-checked every cycle, so "enable/disable ram
+        # monitor" takes effect immediately, without a restart.
+        if not self.features.is_enabled("ram_monitor"):
+            self.resource_label.configure(
+                text="RAM monitor is off (say: enable ram monitor)",
+                text_color="gray")
+            self.after(5000, self.update_resource_status)
+            return
+
         status = get_memory_status()
         if status:
             text = (

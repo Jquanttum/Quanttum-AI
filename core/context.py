@@ -58,3 +58,4 @@ class Environment:
     memory: Any
     state: ConversationState
     clock: Callable[[], datetime] = datetime.now
+    features: Any = None            # FeatureRegistry
