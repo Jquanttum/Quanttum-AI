@@ -22,6 +22,11 @@ class PendingConfirmation:
     on_yes: Callable
     on_no: Callable
     on_alt: Optional[Callable] = None
+    # For destructive actions: the exact text the user must type. A plain
+    # "yes" is then not enough.
+    phrase: str = ""
+    # Called if the question goes unanswered (so the audit log can say so).
+    on_expire: Optional[Callable] = None
 
 
 @dataclass
@@ -59,3 +64,10 @@ class Environment:
     state: ConversationState
     clock: Callable[[], datetime] = datetime.now
     features: Any = None            # FeatureRegistry
+    actions: Any = None             # ActionEngine
+    policy: Any = None              # FolderPolicy
+    index: Any = None               # FileIndex (None = live search only)
+    apps: Any = None                # AppPolicy (approved apps)
+    app_catalog: Any = None         # AppCatalog (finds apps to approve)
+    launcher: Callable = None       # (path) -> None; opens an approved file
+    memory_status: Callable = None  # () -> {"percent","total_gb",...} | None

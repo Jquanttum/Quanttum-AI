@@ -7,11 +7,14 @@ _MARKS = {"enabled": "[on] ", "disabled": "[off]", "unavailable": "[n/a]"}
 
 def _ram_line(registry):
     total = registry.total_ram_gb()
+    threads = registry.threads()
 
-    if total is None:
-        return "I can't detect this PC's RAM on this system."
+    ram = ("I can't detect this PC's RAM on this system." if total is None
+           else f"This PC has {total:.1f} GB of RAM")
+    cpu = "" if threads is None else f" and {threads} CPU threads"
 
-    return f"This PC has {total:.1f} GB of RAM."
+    return ram + (cpu + "." if total is not None else
+                  (f" It has {threads} CPU threads." if threads else ""))
 
 
 def _profile_line(registry):
@@ -26,8 +29,11 @@ def _recommendation(registry):
     if recommended is None or recommended == registry.profile:
         return ""
 
-    return (f"Recommended for this PC: {recommended}. "
+    text = (f"Recommended for this PC: {recommended}. "
             f"Say: use profile {recommended}")
+    note = registry.recommendation_note()
+
+    return f"{text}\n{note}" if note else text
 
 
 def _feature_line(status):

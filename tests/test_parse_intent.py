@@ -141,12 +141,114 @@ class ParseIntentTests(unittest.TestCase):
         self.assertEqual(parse_intent("remember that I use profile lite").name,
                          "remember")
 
+    def test_action_commands(self):
+        simple = {"system info": "system_info", "Show system status": "system_info",
+                  "show allowed folders": "show_allowed_folders",
+                  "undo": "undo", "undo that": "undo", "undo the last action": "undo",
+                  "index status": "index_status", "rebuild index": "rebuild_index",
+                  "update the file index": "rebuild_index",
+                  "show action log": "show_action_log"}
+        for text, name in simple.items():
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, name)
+
+    def test_find(self):
+        cases = {
+            "find exam notes": ("exam notes", "any"),
+            "Find my thesis draft": ("thesis draft", "any"),
+            "locate the file budget": ("budget", "file"),
+            "find folder projects": ("projects", "folder"),
+            "where is the folder reports?": ("reports", "folder"),
+            "search for files invoice": ("invoice", "file"),
+        }
+        for text, (query, kind) in cases.items():
+            with self.subTest(text=text):
+                intent = parse_intent(text)
+                self.assertEqual(intent.name, "find_files")
+                self.assertEqual(intent.entities,
+                                 {"query": query, "kind": kind})
+
+    def test_memory_search_phrases_are_not_file_searches(self):
+        self.assertEqual(parse_intent("find in my memories python").name, "recall")
+        self.assertEqual(
+            parse_intent("search my memories for python").name, "recall")
+
+    def test_create_folder_splits_name_and_location(self):
+        cases = {
+            "create folder Reports in Documents": ("Reports", "Documents"),
+            "make a new folder called Lab Notes inside Desktop": ("Lab Notes", "Desktop"),
+            "create folder Reports": ("Reports", ""),
+            'create folder "Work in progress" in Documents': ("Work in progress", "Documents"),
+            "create folder D:\\Work in Progress\\New": ("D:\\Work in Progress\\New", ""),
+            "create directory ~/Notes": ("~/Notes", ""),
+        }
+        for text, (name, location) in cases.items():
+            with self.subTest(text=text):
+                intent = parse_intent(text)
+                self.assertEqual(intent.name, "create_folder")
+                self.assertEqual(intent.entities,
+                                 {"name": name, "location": location})
+
+    def test_allow_and_disallow(self):
+        intent = parse_intent("allow folder D:\\Projects\\Thesis")
+        self.assertEqual((intent.name, intent.entities["path"]),
+                         ("allow_folder", "D:\\Projects\\Thesis"))
+        for text in ("remove allowed folder D:\\X", "disallow D:\\X",
+                     "stop allowing folder D:\\X"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "disallow_folder")
+        self.assertNotEqual(parse_intent("remove folder D:\\X").name,
+                            "disallow_folder")
+
+    def test_app_commands(self):
+        cases = {
+            "open notepad": ("open_app", "notepad"),
+            "Launch Google Chrome": ("open_app", "Google Chrome"),
+            "open the app calculator": ("open_app", "calculator"),
+            "start the program paint": ("open_app", "paint"),
+            "allow app Notepad": ("allow_app", "Notepad"),
+            "allow application google chrome": ("allow_app", "google chrome"),
+            "remove allowed app notepad": ("disallow_app", "notepad"),
+            "disallow app notepad": ("disallow_app", "notepad"),
+            "stop allowing program paint": ("disallow_app", "paint"),
+        }
+        for text, (name, app) in cases.items():
+            with self.subTest(text=text):
+                intent = parse_intent(text)
+                self.assertEqual(intent.name, name)
+                self.assertEqual(intent.entities, {"name": app})
+        self.assertEqual(parse_intent("show allowed apps").name,
+                         "show_allowed_apps")
+
+    def test_open_file_and_folder_are_not_app_launches(self):
+        for text in ("open file budget.xlsx", "open folder Reports",
+                     "open the folder reports", "open directory x"):
+            with self.subTest(text=text):
+                self.assertNotEqual(parse_intent(text).name, "open_app")
+
+    def test_app_and_folder_permission_commands_do_not_collide(self):
+        self.assertEqual(parse_intent("disallow folder D:\\X").name,
+                         "disallow_folder")
+        self.assertEqual(parse_intent("disallow app notepad").name,
+                         "disallow_app")
+        self.assertEqual(parse_intent("allow folder D:\\X").name,
+                         "allow_folder")
+
+    def test_authorise_needs_more_than_the_word_confirm(self):
+        self.assertEqual(parse_intent("confirm").name, "confirm_yes")
+        intent = parse_intent("Confirm delete reports.")
+        self.assertEqual(intent.name, "authorise")
+        self.assertEqual(intent.entities["phrase"], "Confirm delete reports")
+
     def test_names_are_all_declared(self):
         samples = ["hello", "what time is it", "what day is it", "help",
                    "remember that x", "what do you remember", "recall x",
                    "forget #1", "show my tasks", "related to #1", "yes", "no",
                    "keep both", "show features", "show profile",
-                   "enable ram", "use profile lite", "zzz"]
+                   "enable ram", "use profile lite", "system info", "find x",
+                   "create folder a in b", "undo", "allow folder x",
+                   "show action log", "confirm foo bar", "open notepad",
+                   "allow app x", "disallow app x", "show allowed apps", "zzz"]
         for text in samples:
             self.assertIn(parse_intent(text).name, INTENT_NAMES)
 

@@ -1,4 +1,4 @@
-# Quanttum AI — 0.2.1
+# Quanttum AI — 0.3.0
 
 A lightweight, offline-first Windows desktop assistant starter.
 
@@ -30,7 +30,13 @@ After setup, `run.bat` launches the app without trying to install packages again
 - Tasks kept apart from facts: `remember to ...`, `show my tasks`, `show my preferences` (no reminders or alerts yet)
 - Updating facts: a similar new fact triggers "replace / keep both / no?" instead of a silent duplicate; replaced facts stay in history
 - Related facts: `what's related to #3?`
-- Capability profiles (`lite` / `standard` / `full`) and per-feature toggles: `show features`, `enable ram monitor`, `use profile standard`. Settings are saved in `data/settings.json`. The app recommends a profile from your installed RAM but never switches on its own.
+- **Action Engine** with permission levels, an append-only audit log and undo (see *Safety model* below)
+- **Fast file search:** `find exam notes`, `find folder projects`. A background index of your allowed folders answers in milliseconds; before it is ready (or if switched off) a slower live search is used
+- **Folder creation:** `create folder Reports in Documents` (asks first, then `undo` removes it if still empty)
+- Allowed folders: `show allowed folders`, `allow folder D:\Projects`, `remove allowed folder D:\Projects`
+- **Opening applications:** approve an app once (`allow app notepad`), then `open notepad`. Both steps ask for a yes. Only approved apps, and only the exact file you approved, can ever be launched. `show allowed apps`, `remove allowed app notepad`
+- `system info`, `index status`, `rebuild index`, `show action log`
+- Capability profiles (`lite` / `standard` / `full`) and per-feature toggles: `show features`, `enable ram monitor`, `use profile standard`. Settings are saved in `data/settings.json`. The app recommends a profile from your installed RAM *and* CPU threads (a 4-thread laptop CPU is capped at `standard` even with 16 GB RAM) but never switches on its own.
 - Versioned database schema; existing data is upgraded in place, in one transaction, after an automatic backup (`data/assistant.db.bak-v<old version>`)
 - Basic rule-based intent recognition
 - Date and time responses
@@ -44,7 +50,13 @@ After setup, `run.bat` launches the app without trying to install packages again
 | `core/assistant.py` | **Core**: receives text, parses the intent, routes to a handler, saves the exchange |
 | `core/intent.py` | `Intent` object and rule-based `parse_intent()` |
 | `core/context.py` | Short-term conversation state and the `Environment` handlers receive |
-| `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`, `settings_commands.py`, `confirmation.py`) plus the registry in `__init__.py` |
+| `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`, `settings_commands.py`, `action_commands.py`, `confirmation.py`) plus the registry in `__init__.py` |
+| `core/actions/` | **Action Engine** (`engine.py`) and the actions: `system.py`, `folders.py`, `search.py`. Handlers never act directly; they request actions from the engine |
+| `core/audit.py` | Append-only audit log (database triggers reject UPDATE/DELETE) |
+| `core/apps.py` | App catalog (Start Menu + PATH), approved-apps list, launcher (no shell, no arguments) |
+| `core/policy.py` | Allowed folders: path resolution, escape protection, protected system folders, Windows known-folder lookup (OneDrive-safe) |
+| `core/fileindex.py` | SQLite + FTS5 trigram file-name index, incremental refresh, live-search fallback |
+| `core/safejson.py` | Atomic JSON writes and corrupt-file quarantine |
 | `core/features.py` | Profiles, feature registry, overrides, requirement checks (RAM, packages), lazy-import gate |
 | `core/memory.py` | SQLite storage: conversation history, long-term memories (status, category, provenance), FTS5 search, migrations |
 | `core/textutils.py` | Pure text helpers: stopwords, search-term extraction, FTS query building, categorisation |
@@ -52,6 +64,25 @@ After setup, `run.bat` launches the app without trying to install packages again
 | `tests/` | Standard-library `unittest` suite |
 
 To add a capability: write a handler in `core/handlers/`, add its name to `INTENT_NAMES`, teach `parse_intent()` to produce it, and register it in `build_registry()`. A test fails if an intent has no handler.
+
+## Safety model
+Quanttum AI never runs free-form commands. It can only perform fixed, named *actions*, and the Action Engine enforces what each level needs:
+
+| Level | Meaning | What the engine requires |
+|---|---|---|
+| 1 | Read-only (system info, searching files) | Runs immediately |
+| 2 | Reversible (create a folder, allow a folder or app, open an app) | You say **yes**; how to undo it is recorded |
+| 3 | Destructive | You type an exact phrase; a plain "yes" is refused |
+
+* File actions only work inside **allowed folders** (default: your Documents, Desktop and Downloads). Paths are fully resolved first, so `..` and symlinks cannot escape. Drive roots, your whole home folder and Windows system folders can never be allowed.
+* A confirmed action is **re-checked** just before it runs, in case things changed since you answered.
+* Every request, refusal, answer and result is written to the **audit log** (`show action log`). The log cannot be edited or deleted by the app.
+* Apps: only Start Menu shortcuts (`.lnk`) and programs (`.exe`) can be approved, never scripts. Launching uses the stored, approved path only, with no command shell and no arguments. Uninstallers are never offered.
+* The only removal available is of **empty** folders (used by `undo`); nothing is ever deleted recursively.
+* If the permissions file is damaged, **no** folders are allowed until you add them again (it never falls back to defaults).
+* The file index stores names, sizes and dates only, never file contents, and never follows symlinks.
+
+Local data files (all in `data/`, all ignored by Git): `assistant.db` (+ `.bak-v*` backups), `settings.json`, `permissions.json` (allowed folders and approved apps), `fileindex.db` (disposable, rebuilt on demand).
 
 ## Running the tests
 ```bat

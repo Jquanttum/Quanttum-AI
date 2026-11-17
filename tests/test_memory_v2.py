@@ -132,6 +132,26 @@ class MigrationV2Tests(TempDbCase):
         self.assertEqual(len(memory.find(limit=10)), 2)
 
 
+class MigrationV3Tests(TempDbCase):
+    def test_v2_database_gains_the_audit_log_and_keeps_everything(self):
+        memory = self.open()                         # current schema
+        memory.remember("I prefer Python")
+        memory.save("user", "hello")
+        memory.connection.execute("DROP TRIGGER audit_log_no_update")
+        memory.connection.execute("DROP TRIGGER audit_log_no_delete")
+        memory.connection.execute("DROP TABLE audit_log")
+        memory.connection.execute("PRAGMA user_version = 2")
+        memory.connection.commit()
+        memory.close()
+
+        upgraded = self.open()
+        self.assertEqual(upgraded.search(), ["I prefer Python"])
+        self.assertEqual(upgraded.recent()[0][1], "hello")
+        self.assertEqual(upgraded.connection.execute(
+            "SELECT count(*) FROM audit_log").fetchone()[0], 0)
+        self.assertTrue(Path(self.path + ".bak-v2").exists())
+
+
 class SearchTests(TempDbCase):
     def setUp(self):
         super().setUp()

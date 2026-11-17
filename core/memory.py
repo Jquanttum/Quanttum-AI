@@ -10,7 +10,7 @@ from core.textutils import categorise, fts_query, significant_terms, tokens
 # The version is stored inside the database file (PRAGMA user_version), so
 # existing databases are upgraded in place and never rebuilt. Each step runs
 # in one transaction: it either completes or leaves the database untouched.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 STATUS_ACTIVE = "active"
 STATUS_SUPERSEDED = "superseded"   # replaced by a newer fact; kept as history
@@ -230,6 +230,36 @@ class Memory:
         connection.execute(
             "INSERT INTO memories_fts(memories_fts) VALUES ('rebuild')"
         )
+
+    def _migrate_to_3(self):
+        """Audit log for the Action Engine (append-only)."""
+
+        connection = self.connection
+
+        connection.execute("""
+            CREATE TABLE audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                request_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                event TEXT NOT NULL,
+                params TEXT,
+                detail TEXT,
+                undo TEXT,
+                message_id INTEGER
+            )
+        """)
+        connection.execute(
+            "CREATE INDEX idx_audit_request ON audit_log(request_id)")
+        connection.execute("""
+            CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log
+            BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END
+        """)
+        connection.execute("""
+            CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
+            BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END
+        """)
 
     # -----------------------------------------
     # CONVERSATION HISTORY

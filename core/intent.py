@@ -26,6 +26,21 @@ INTENT_NAMES = (
     "show_profile",
     "set_feature",
     "set_profile",
+    "system_info",
+    "find_files",
+    "show_allowed_folders",
+    "allow_folder",
+    "disallow_folder",
+    "open_app",
+    "allow_app",
+    "disallow_app",
+    "show_allowed_apps",
+    "create_folder",
+    "undo",
+    "index_status",
+    "rebuild_index",
+    "show_action_log",
+    "authorise",
     "confirm_yes",
     "confirm_no",
     "confirm_alt",
@@ -181,6 +196,201 @@ def _parse_settings_command(message):
 
 
 # ---------------------------------------------------------------------------
+# Action commands: system, files, folders.
+# ---------------------------------------------------------------------------
+
+SYSTEM_INFO_RE = re.compile(
+    r"^(?:show\s+)?(?:system\s+(?:info|information|status)|sysinfo)$",
+    re.IGNORECASE
+)
+
+FIND_RES = (
+    re.compile(
+        r"^(?:find|locate)\s+(?:the\s+|my\s+)?"
+        r"(?:(files?|folders?|directory|directories)\s+)?(.+)$",
+        re.IGNORECASE),
+    re.compile(
+        r"^where(?:'s|\s+is)\s+(?:the\s+|my\s+)?"
+        r"(files?|folders?|directory)\s+(.+)$",
+        re.IGNORECASE),
+    re.compile(
+        r"^search\s+(?:for\s+)?(files?|folders?)\s+(?:for\s+)?(.+)$",
+        re.IGNORECASE),
+)
+
+SHOW_ALLOWED_RE = re.compile(
+    r"^(?:show|list)\s+(?:my\s+)?allowed\s+folders$", re.IGNORECASE)
+
+ALLOW_FOLDER_RE = re.compile(
+    r"^allow\s+(?:folder|directory)\s+(.+)$", re.IGNORECASE)
+
+DISALLOW_FOLDER_RES = (
+    re.compile(r"^(?:remove|revoke)\s+allowed\s+(?:folder|directory)\s+(.+)$",
+               re.IGNORECASE),
+    re.compile(r"^disallow\s+(?:folder\s+|directory\s+)?(.+)$", re.IGNORECASE),
+    re.compile(r"^stop\s+allowing\s+(?:folder\s+|directory\s+)?(.+)$",
+               re.IGNORECASE),
+)
+
+CREATE_FOLDER_RE = re.compile(
+    r"^(?:create|make)\s+(?:a\s+|the\s+)?(?:new\s+)?(?:folder|directory)"
+    r"\s+(?:called\s+|named\s+)?(.+)$",
+    re.IGNORECASE
+)
+
+_APP_WORD = r"(?:app|application|program)"
+
+OPEN_APP_RES = (
+    # "open file/folder ..." is reserved for opening files later
+    re.compile(r"^(?:open|launch)\s+"
+               r"(?!(?:the\s+)?(?:files?|folders?|directory|directories)\b)"
+               r"(?:the\s+)?(?:" + _APP_WORD + r"\s+)?(.+)$",
+               re.IGNORECASE),
+    re.compile(r"^start\s+(?:the\s+)?" + _APP_WORD + r"\s+(.+)$",
+               re.IGNORECASE),
+)
+
+ALLOW_APP_RE = re.compile(r"^allow\s+" + _APP_WORD + r"\s+(.+)$", re.IGNORECASE)
+
+DISALLOW_APP_RES = (
+    re.compile(r"^(?:remove|revoke)\s+allowed\s+" + _APP_WORD + r"\s+(.+)$",
+               re.IGNORECASE),
+    re.compile(r"^disallow\s+" + _APP_WORD + r"\s+(.+)$", re.IGNORECASE),
+    re.compile(r"^stop\s+allowing\s+" + _APP_WORD + r"\s+(.+)$", re.IGNORECASE),
+)
+
+SHOW_ALLOWED_APPS_RE = re.compile(
+    r"^(?:show|list)\s+(?:my\s+)?allowed\s+(?:apps|applications|programs)$",
+    re.IGNORECASE)
+
+UNDO_RE = re.compile(
+    r"^undo(?:\s+(?:that|it|last|the\s+last)(?:\s+action)?)?$", re.IGNORECASE)
+
+INDEX_STATUS_RE = re.compile(
+    r"^(?:show\s+)?(?:file\s+)?index\s+status$", re.IGNORECASE)
+
+REBUILD_INDEX_RE = re.compile(
+    r"^(?:rebuild|refresh|update)\s+(?:the\s+)?(?:file\s+)?index$",
+    re.IGNORECASE)
+
+ACTION_LOG_RE = re.compile(
+    r"^(?:show|view)\s+(?:the\s+)?(?:action|audit)\s+(?:log|history)$",
+    re.IGNORECASE)
+
+# Typed authorisation for destructive actions, e.g. "confirm delete reports".
+AUTHORISE_RE = re.compile(r"^confirm\s+.+$", re.IGNORECASE)
+
+_ABSOLUTE_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\|/|~)")
+_IN_SPLIT = re.compile(r"^(.*?)\s+(?:in|inside|under)\s+(.+)$", re.IGNORECASE)
+_IN_TAIL = re.compile(r"^(?:in|inside|under)\s+(.+)$", re.IGNORECASE)
+
+_FIND_KIND = {"file": "file", "files": "file", "folder": "folder",
+              "folders": "folder", "directory": "folder",
+              "directories": "folder"}
+
+
+def _split_name_and_location(rest):
+    """'Reports in Documents' -> ('Reports', 'Documents'). A full path is
+    never split, and a quoted name can contain the word 'in'."""
+
+    rest = rest.strip()
+
+    if rest[:1] in ("\"", "'"):
+        closing = rest.find(rest[0], 1)
+        if closing > 0:
+            name = rest[1:closing]
+            tail = _IN_TAIL.match(rest[closing + 1:].strip())
+            return name, (tail.group(1).strip() if tail else "")
+
+    if _ABSOLUTE_PATH.match(rest):
+        return rest, ""
+
+    match = _IN_SPLIT.match(rest)
+
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+
+    return rest, ""
+
+
+def _parse_action_command(message):
+    """Return an Intent for an action command, or None."""
+
+    text = " ".join(message.split()).replace("\u2019", "'")
+    spoken = text.rstrip(" ?.!")
+
+    if SYSTEM_INFO_RE.match(spoken):
+        return Intent("system_info", {}, 1.0, message)
+
+    if SHOW_ALLOWED_RE.match(spoken):
+        return Intent("show_allowed_folders", {}, 1.0, message)
+
+    if UNDO_RE.match(spoken):
+        return Intent("undo", {}, 1.0, message)
+
+    if INDEX_STATUS_RE.match(spoken):
+        return Intent("index_status", {}, 1.0, message)
+
+    if REBUILD_INDEX_RE.match(spoken):
+        return Intent("rebuild_index", {}, 1.0, message)
+
+    if ACTION_LOG_RE.match(spoken):
+        return Intent("show_action_log", {}, 1.0, message)
+
+    if SHOW_ALLOWED_APPS_RE.match(spoken):
+        return Intent("show_allowed_apps", {}, 1.0, message)
+
+    match = ALLOW_APP_RE.match(spoken)
+    if match:
+        return Intent("allow_app", {"name": match.group(1).strip()}, 1.0,
+                      message)
+
+    # App patterns come before the folder ones: "disallow app x" must not
+    # be read as "disallow folder 'app x'".
+    for pattern in DISALLOW_APP_RES:
+        match = pattern.match(spoken)
+        if match:
+            return Intent("disallow_app", {"name": match.group(1).strip()},
+                          1.0, message)
+
+    match = ALLOW_FOLDER_RE.match(spoken)
+    if match:
+        return Intent("allow_folder", {"path": match.group(1).strip()}, 1.0,
+                      message)
+
+    for pattern in DISALLOW_FOLDER_RES:
+        match = pattern.match(spoken)
+        if match:
+            return Intent("disallow_folder", {"path": match.group(1).strip()},
+                          1.0, message)
+
+    match = CREATE_FOLDER_RE.match(text.rstrip(" ?!"))
+    if match:
+        name, location = _split_name_and_location(match.group(1))
+        return Intent("create_folder", {"name": name, "location": location},
+                      1.0, message)
+
+    for pattern in OPEN_APP_RES:
+        match = pattern.match(spoken)
+        if match:
+            return Intent("open_app", {"name": match.group(1).strip()}, 1.0,
+                          message)
+
+    for pattern in FIND_RES:
+        match = pattern.match(spoken)
+        if match:
+            kind = _FIND_KIND.get((match.group(1) or "").casefold(), "any")
+            return Intent("find_files",
+                          {"query": match.group(2).strip(), "kind": kind},
+                          1.0, message)
+
+    if AUTHORISE_RE.match(spoken):
+        return Intent("authorise", {"phrase": spoken}, 1.0, message)
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Basic conversational intents. Matched on whole words/phrases (\b), never on
 # raw substrings: the original `"hi" in text` also matched "this" and "which".
 # ---------------------------------------------------------------------------
@@ -315,6 +525,9 @@ def parse_intent(message):
 
     if intent is None:
         intent = _parse_settings_command(message)
+
+    if intent is None:
+        intent = _parse_action_command(message)
 
     if intent is not None:
         return intent

@@ -260,7 +260,8 @@ class FeatureCommandTests(CoreTestCase):
         from core.features import FeatureRegistry
         self.features = FeatureRegistry(
             memory_status=lambda: {"total_gb": 3.83, "available_gb": 1.5,
-                                   "percent": 60})
+                                   "percent": 60},
+            cpu_threads=lambda: 16)
         self.assistant = Assistant(self.memory, clock=self.clock,
                                    features=self.features)
 
@@ -299,6 +300,15 @@ class FeatureCommandTests(CoreTestCase):
         answer = self.ask("turn off the lights")
         self.assertIn("don't have a feature called", answer)
         self.assertIn("ram_monitor", answer)
+
+    def test_show_profile_explains_a_cpu_limited_recommendation(self):
+        self.features._memory_status = lambda: {"total_gb": 15.4,
+                                                "available_gb": 9, "percent": 40}
+        self.features._cpu_threads = lambda: 4
+        answer = self.ask("show profile")
+        self.assertIn("15.4 GB of RAM and 4 CPU threads", answer)
+        self.assertIn("Recommended for this PC: standard", answer)
+        self.assertIn("only 4 threads", answer)
 
     def test_show_profile_recommends_without_switching(self):
         features = self.features

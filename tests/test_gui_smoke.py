@@ -30,13 +30,22 @@ class WindowSmokeTest(unittest.TestCase):
             self.skipTest(f"GUI libraries unavailable: {error}")
 
         self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        base = Path(self.tmp.name)
+        base = Path(os.path.realpath(self.tmp.name))
+        self.docs = base / "Documents"
+        self.docs.mkdir()
+        (self.docs / "Exam Notes.docx").write_text("x")
         self.settings_path = base / "settings.json"
         db_path = str(base / "gui.db")
 
         self.patches = [
             mock.patch.object(window, "Memory", lambda: Memory(db_path)),
             mock.patch.object(window, "SETTINGS_PATH", str(self.settings_path)),
+            mock.patch.object(window, "PERMISSIONS_PATH",
+                              str(base / "permissions.json")),
+            mock.patch.object(window, "FILE_INDEX_PATH",
+                              str(base / "fileindex.db")),
+            mock.patch.object(window, "default_user_folders",
+                              lambda: [self.docs]),
             mock.patch.object(window, "get_memory_status",
                               lambda: dict(FAKE_RAM)),
         ]
@@ -87,6 +96,28 @@ class WindowSmokeTest(unittest.TestCase):
     def test_settings_are_written_next_to_the_data(self):
         self.say("disable ram monitor")
         self.assertTrue(self.settings_path.exists())
+
+    def test_find_files_and_create_folder_through_the_window(self):
+        self.app.index.wait_until_idle(10)
+        self.say("find exam")
+        self.assertIn("Exam Notes.docx", self.chat())
+
+        self.say(f"create folder Reports in {self.docs}")
+        self.assertIn("about to create", self.chat())
+        self.assertFalse((self.docs / "Reports").exists())
+        self.say("yes")
+        self.assertTrue((self.docs / "Reports").is_dir())
+
+        self.say("undo")
+        self.say("yes")
+        self.assertFalse((self.docs / "Reports").exists())
+
+    def test_closing_the_window_stops_the_indexer(self):
+        self.app.assistant.index.refresh_in_background([self.docs],
+                                                       throttle=0.05)
+        self.app.on_close()
+        self.assertFalse(self.app.index.indexing)
+        self.app = None
 
     def test_show_features_renders(self):
         self.say("show features")

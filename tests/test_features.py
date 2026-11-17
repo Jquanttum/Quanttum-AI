@@ -42,7 +42,7 @@ class RegistryTestCase(unittest.TestCase):
     def registry(self, total=3.83, path=True, features=TEST_FEATURES):
         return FeatureRegistry(self.path if path else None,
                                memory_status=ram(total) if total else no_ram,
-                               features=features)
+                               features=features, cpu_threads=lambda: 16)
 
 
 class ProfileTests(RegistryTestCase):
@@ -67,6 +67,45 @@ class ProfileTests(RegistryTestCase):
         registry.set_profile("full")
         self.assertTrue(registry.profile_chosen)
         self.assertEqual(registry.status("big_only").state, "enabled")
+
+    def test_cpu_can_cap_what_the_ram_would_allow(self):
+        # the real case: 16 GB RAM but only 4 CPU threads (Ryzen 3 4300U)
+        registry = FeatureRegistry(memory_status=ram(15.4),
+                                   cpu_threads=lambda: 4)
+        self.assertEqual(registry.recommended_profile(), "standard")
+        self.assertIn("'full'", registry.recommendation_note())
+        self.assertIn("4 threads", registry.recommendation_note())
+
+    def test_cpu_recommendations(self):
+        cases = ((2, 3.83, "lite"), (4, 15.4, "standard"),
+                 (8, 15.4, "full"), (16, 7.8, "standard"),
+                 (16, 3.83, "lite"), (3, 7.8, "lite"))
+        for threads, total, expected in cases:
+            with self.subTest(threads=threads, total=total):
+                registry = FeatureRegistry(memory_status=ram(total),
+                                           cpu_threads=lambda t=threads: t)
+                self.assertEqual(registry.recommended_profile(), expected)
+
+    def test_no_note_when_cpu_is_not_the_limit(self):
+        registry = FeatureRegistry(memory_status=ram(3.83),
+                                   cpu_threads=lambda: 16)
+        self.assertEqual(registry.recommendation_note(), "")
+
+    def test_unknown_cpu_falls_back_to_ram_alone(self):
+        registry = FeatureRegistry(memory_status=ram(15.4),
+                                   cpu_threads=lambda: None)
+        self.assertEqual(registry.recommended_profile(), "full")
+
+    def test_nothing_detectable_gives_no_recommendation(self):
+        registry = FeatureRegistry(memory_status=no_ram,
+                                   cpu_threads=lambda: None)
+        self.assertIsNone(registry.recommended_profile())
+
+    def test_profile_warning_covers_cpu_too(self):
+        registry = FeatureRegistry(memory_status=ram(15.4),
+                                   cpu_threads=lambda: 4)
+        registry.set_profile("full")
+        self.assertIn("8+ CPU threads", registry.profile_warning())
 
     def test_unknown_profile_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -240,7 +279,8 @@ class PersistenceTests(RegistryTestCase):
         blocker = Path(self.tmp.name) / "blocker"
         blocker.write_text("i am a file, not a folder")
         registry = FeatureRegistry(blocker / "settings.json",
-                                   memory_status=ram(4), features=TEST_FEATURES)
+                                   memory_status=ram(4), features=TEST_FEATURES,
+                                   cpu_threads=lambda: 16)
         with self.assertRaises(OSError):
             registry.set_enabled("basic", False)
         self.assertTrue(registry.is_enabled("basic"))

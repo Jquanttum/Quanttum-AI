@@ -22,11 +22,11 @@ import importlib
 import importlib.util
 import json
 import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from core.resource_monitor import get_memory_status
+from core.safejson import load_json, save_json
 
 SETTINGS_VERSION = 1
 
@@ -36,14 +36,21 @@ class Profile:
     name: str
     min_total_gb: float     # smallest installed RAM this profile is meant for
     summary: str
+    min_threads: int = 0    # smallest CPU thread count it is meant for
 
 
 # Windows reports slightly less than the installed amount (an 8 GB PC shows
 # about 7.8 GB), so the thresholds sit a little below the nominal sizes.
+#
+# RAM alone is not enough: a laptop chip with 4 threads and 16 GB of RAM can
+# hold a big model but is too slow to run the heaviest features comfortably.
+# So a profile needs both enough RAM and enough CPU threads.
 PROFILES = {
-    "lite": Profile("lite", 0.0, "small machines (around 4 GB RAM)"),
-    "standard": Profile("standard", 7.0, "around 8 GB RAM"),
-    "full": Profile("full", 14.0, "16 GB RAM or more"),
+    "lite": Profile("lite", 0.0, "small machines (around 4 GB RAM)", 0),
+    "standard": Profile("standard", 7.0,
+                        "8-16 GB RAM and a 4+ thread CPU", 4),
+    "full": Profile("full", 14.0,
+                    "16 GB RAM or more and a strong CPU (8+ threads) or GPU", 8),
 }
 PROFILE_ORDER = ("lite", "standard", "full")
 DEFAULT_PROFILE = "lite"      # the safe choice until the user picks one
@@ -72,7 +79,11 @@ FEATURES = (
             ALL, aliases=("ram", "memory monitor", "resource monitor")),
     Feature("action_engine", "Action engine",
             "Permission-controlled computer actions with an audit log.",
-            ALL, aliases=("actions",), planned="0.3"),
+            ALL, aliases=("actions",)),
+    Feature("file_index", "File index",
+            "A background index of your allowed folders for instant file "
+            "search. Off = slower live search.",
+            ALL, aliases=("index", "file search index", "fast search")),
     Feature("voice_input", "Voice input",
             "Speech recognition.", BIG,
             aliases=("speech recognition", "microphone"), planned="0.4"),
@@ -136,9 +147,11 @@ class FeatureRegistry:
     """
 
     def __init__(self, settings_path=None, memory_status=get_memory_status,
-                 features=FEATURES, find_spec=importlib.util.find_spec):
+                 features=FEATURES, find_spec=importlib.util.find_spec,
+                 cpu_threads=os.cpu_count):
         self.settings_path = Path(settings_path) if settings_path else None
         self._memory_status = memory_status
+        self._cpu_threads = cpu_threads
         self._find_spec = find_spec
         self._features = {feature.key: feature for feature in features}
         self.settings_error = ""
@@ -155,64 +168,40 @@ class FeatureRegistry:
     def _load(self):
         settings = self._blank()
 
-        if self.settings_path is None or not self.settings_path.exists():
+        if self.settings_path is None:
             return settings
 
-        try:
-            raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        raw, error = load_json(self.settings_path, "settings")
 
-            if not isinstance(raw, dict):
-                raise ValueError("settings file is not a JSON object")
-
-            profile = raw.get("profile")
-            if profile in PROFILES:
-                settings["profile"] = profile
-
-            overrides = raw.get("features", {})
-            if isinstance(overrides, dict):
-                settings["features"] = {
-                    key: value for key, value in overrides.items()
-                    if isinstance(key, str) and isinstance(value, bool)
-                }
-
+        if error:
+            self.settings_error = error
             return settings
 
-        except (OSError, ValueError) as error:
-            # Keep the unreadable file for inspection and start from defaults.
-            try:
-                os.replace(self.settings_path,
-                           str(self.settings_path) + ".corrupt")
-                kept = " It was kept as settings.json.corrupt."
-            except OSError:
-                kept = ""
+        if raw is None:
+            return settings
 
+        if not isinstance(raw, dict):
             self.settings_error = (
-                f"Your settings file could not be read ({error}). "
-                f"I'm using the defaults.{kept}"
-            )
-            return self._blank()
+                "Your settings file is not in the expected format. "
+                "I'm using the defaults.")
+            return settings
+
+        profile = raw.get("profile")
+        if profile in PROFILES:
+            settings["profile"] = profile
+
+        overrides = raw.get("features", {})
+        if isinstance(overrides, dict):
+            settings["features"] = {
+                key: value for key, value in overrides.items()
+                if isinstance(key, str) and isinstance(value, bool)
+            }
+
+        return settings
 
     def _save(self):
-        if self.settings_path is None:
-            return
-
-        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write to a temporary file, then swap it in, so a crash can never
-        # leave a half-written settings file.
-        handle, temp_name = tempfile.mkstemp(
-            dir=self.settings_path.parent, suffix=".tmp")
-
-        try:
-            with os.fdopen(handle, "w", encoding="utf-8") as file:
-                json.dump(self._settings, file, indent=2, sort_keys=True)
-            os.replace(temp_name, self.settings_path)
-        except BaseException:
-            try:
-                os.unlink(temp_name)
-            except OSError:
-                pass
-            raise
+        if self.settings_path is not None:
+            save_json(self.settings_path, self._settings)
 
     def _commit(self, mutate):
         """Apply a change and save it; undo the change if saving fails."""
@@ -252,27 +241,62 @@ class FeatureRegistry:
         status = self._memory_status()
         return status["total_gb"] if status else None
 
-    def recommended_profile(self):
-        """The largest profile this PC's RAM supports (None if unknown)."""
+    def threads(self):
+        """Logical CPU threads, or None when unknown."""
 
+        return self._cpu_threads()
+
+    def _fitting_profiles(self, use_cpu=True):
         total = self.total_ram_gb()
+        threads = self.threads() if use_cpu else None
 
-        if total is None:
+        return [
+            name for name in PROFILE_ORDER
+            if (total is None or PROFILES[name].min_total_gb <= total)
+            and (threads is None or PROFILES[name].min_threads <= threads)
+        ]
+
+    def recommended_profile(self):
+        """The largest profile this PC's RAM *and* CPU support.
+
+        RAM is the hard limit, so with no RAM reading there is no
+        recommendation (the CPU alone could overshoot).
+        """
+
+        if self.total_ram_gb() is None:
             return None
 
-        fitting = [name for name in PROFILE_ORDER
-                   if PROFILES[name].min_total_gb <= total]
-        return fitting[-1]
+        return self._fitting_profiles()[-1]
+
+    def recommendation_note(self):
+        """Explain when the CPU holds back what the RAM would allow."""
+
+        with_cpu = self._fitting_profiles()
+        ram_only = self._fitting_profiles(use_cpu=False)
+
+        if not with_cpu or not ram_only or with_cpu[-1] == ram_only[-1]:
+            return ""
+
+        return (f"Your RAM would allow '{ram_only[-1]}', but this CPU has "
+                f"only {self.threads()} threads, so '{with_cpu[-1]}' is the "
+                "better fit.")
 
     def profile_warning(self):
         """A caveat when the chosen profile asks more than this PC has."""
 
+        wanted = PROFILES[self.profile]
         total = self.total_ram_gb()
-        needed = PROFILES[self.profile].min_total_gb
+        threads = self.threads()
 
-        if total is not None and total < needed:
+        if total is not None and total < wanted.min_total_gb:
             return (f"The {self.profile} profile is meant for about "
-                    f"{needed:g} GB or more; this PC has {total:.1f} GB.")
+                    f"{wanted.min_total_gb:g} GB or more; this PC has "
+                    f"{total:.1f} GB.")
+
+        if threads is not None and threads < wanted.min_threads:
+            return (f"The {self.profile} profile is meant for "
+                    f"{wanted.min_threads}+ CPU threads; this PC has "
+                    f"{threads}.")
 
         return ""
 

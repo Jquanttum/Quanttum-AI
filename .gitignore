@@ -18,10 +18,13 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 data/*.bak*
+data/*.db-*
 
 # Personal settings (profile and feature toggles)
 data/settings.json
 data/settings.json.*
+data/permissions.json
+data/permissions.json.*
 
 # Logs
 *.log

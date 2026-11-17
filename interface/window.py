@@ -2,8 +2,14 @@ import customtkinter as ctk
 from core.memory import Memory
 from core.assistant import Assistant
 from core.features import FeatureRegistry
+from core.fileindex import FileIndex
+from core.apps import AppPolicy
+from core.policy import FolderPolicy, PermissionsStore, default_user_folders
 from core.resource_monitor import get_memory_status
-from config import APP_NAME, APP_VERSION, MAX_RAM_WARNING_PERCENT, SETTINGS_PATH
+from config import (
+    APP_NAME, APP_VERSION, MAX_RAM_WARNING_PERCENT, SETTINGS_PATH,
+    PERMISSIONS_PATH, FILE_INDEX_PATH,
+)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -16,7 +22,14 @@ class QuanttumApp(ctk.CTk):
         self.minsize(680, 480)
         self.memory = Memory()
         self.features = FeatureRegistry(SETTINGS_PATH)
-        self.assistant = Assistant(self.memory, features=self.features)
+        permissions = PermissionsStore(PERMISSIONS_PATH)
+        self.policy = FolderPolicy(defaults=default_user_folders(),
+                                   store=permissions)
+        self.apps = AppPolicy(permissions)
+        self.index = FileIndex(FILE_INDEX_PATH)
+        self.assistant = Assistant(self.memory, features=self.features,
+                                   policy=self.policy, index=self.index,
+                                   apps=self.apps)
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -59,12 +72,15 @@ class QuanttumApp(ctk.CTk):
         self.write_chat("Quanttum AI", "System initialised. Type 'help' to see available commands.")
         if self.features.settings_error:
             self.write_chat("Quanttum AI", self.features.settings_error)
+        if self.policy.error:
+            self.write_chat("Quanttum AI", self.policy.error)
         for role, content, _ in self.memory.recent(20):
             if role == "user":
                 self.write_chat("You", content)
             elif role == "assistant":
                 self.write_chat("Quanttum AI", content)
         self.update_resource_status()
+        self.assistant.start_background_services()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def write_chat(self, speaker, message):
@@ -109,5 +125,6 @@ class QuanttumApp(ctk.CTk):
         self.after(5000, self.update_resource_status)
 
     def on_close(self):
+        self.assistant.shutdown()
         self.memory.close()
         self.destroy()
