@@ -37,6 +37,7 @@ def help(intent, env):
         "- Allow app notepad, then: Open notepad\n"
         "- Show allowed apps\n"
         "- Show model / Use model <name> / Benchmark (the local AI model)\n"
+        "- Voice status / Test microphone / Stop speaking (then press Mic)\n"
         "- Anything else: just talk to me (needs the local AI model)\n"
         "- System info / Show action log / Index status\n\n"
         "More advanced intelligence, voice and automation "

@@ -7,7 +7,7 @@ parse_intent() to produce it, and add one line to build_registry().
 
 from core.handlers import (
     action_commands, basic, confirmation, llm_commands, memory_commands,
-    settings_commands,
+    settings_commands, voice_commands,
 )
 
 
@@ -31,6 +31,10 @@ def build_registry():
         "llm_status": llm_commands.llm_status,
         "use_model": llm_commands.use_model,
         "benchmark_model": llm_commands.benchmark_model,
+        "voice_status": voice_commands.voice_status,
+        "voice_test": voice_commands.voice_test,
+        "stop_speaking": voice_commands.stop_speaking,
+        "use_voice_model": voice_commands.use_voice_model,
         "system_info": action_commands.system_info,
         "find_files": action_commands.find_files,
         "show_allowed_folders": action_commands.show_allowed_folders,

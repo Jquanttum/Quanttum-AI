@@ -1,4 +1,4 @@
-# Quanttum AI — 0.5.0
+# Quanttum AI — 0.6.0
 
 A lightweight, offline-first Windows desktop assistant starter.
 
@@ -31,6 +31,7 @@ After setup, `run.bat` launches the app without trying to install packages again
 - Updating facts: a similar new fact triggers "replace / keep both / no?" instead of a silent duplicate; replaced facts stay in history
 - Related facts: `what's related to #3?`
 - **Local AI model (Ollama):** anything that isn't a command is answered by a model running on your own PC, with your relevant memories and recent conversation as context. Replies stream into the window, there is a Stop button, and the window never freezes while the model thinks. See *Local AI model* below.
+- **Voice (offline):** press **Mic**, speak, check the text, press Enter. Optional spoken replies using Windows' built-in voice. See *Voice* below.
 - **Action Engine** with permission levels, an append-only audit log and undo (see *Safety model* below)
 - **Fast file search:** `find exam notes`, `find folder projects`. A background index of your allowed folders answers in milliseconds; before it is ready (or if switched off) a slower live search is used
 - **Folder creation:** `create folder Reports in Documents` (asks first, then `undo` removes it if still empty)
@@ -54,6 +55,7 @@ After setup, `run.bat` launches the app without trying to install packages again
 | `core/handlers/` | One small function per capability (`basic.py`, `memory_commands.py`, `settings_commands.py`, `action_commands.py`, `confirmation.py`) plus the registry in `__init__.py` |
 | `core/actions/` | **Action Engine** (`engine.py`) and the actions: `system.py`, `folders.py`, `search.py`. Handlers never act directly; they request actions from the engine |
 | `core/audit.py` | Append-only audit log (database triggers reject UPDATE/DELETE) |
+| `core/voice/` | Offline voice: `audio.py` (PyAudio mic + level meter), `listen.py` (listening loop), `models.py` (finds Vosk models), `tts.py` (Windows speech via PowerShell, text on stdin), `service.py` |
 | `core/llm.py` | Ollama client (standard library only). Loopback-only: it refuses any non-local host |
 | `core/llm_brain.py` | Model choice for your hardware, prompts, memory-as-context, strict validation of model-suggested commands, benchmark |
 | `core/apps.py` | App catalog (Start Menu + PATH), approved-apps list, launcher (no shell, no arguments) |
@@ -84,6 +86,19 @@ use model qwen2.5:3b      (pick another installed model)  /  use default model
 * **Hardware-aware:** the model is chosen from what you have installed, by profile, and models whose weights would take more than 45% of your RAM are skipped. Replies are length-capped per profile.
 * **Optional command understanding** (`enable ai command understanding`, off by default): the model may turn a free-form sentence into one of a short list of *safe* commands (find, open app, create folder, remember, recall, system info, time/date). Its output is validated strictly: it must be valid JSON, use an allowed command and expected fields only, and every piece of text must come from words you actually typed. It can **never** produce yes/no/authorisation, forget, undo, permission or settings changes, and the resulting command still asks for confirmation where it normally would. Each unrecognised message costs an extra model call, so it is slower.
 * If Ollama stops or the model is missing, replies say why and fall back to memory search.
+
+## Voice
+Setup (once):
+1. `py -3.13 -m pip install -r requirements-voice.txt` (installs `vosk` and `pyaudio`).
+2. Download a Vosk speech model from alphacephei.com/vosk/models, for example `vosk-model-small-en-us-0.15` (40 MB, fast) or `vosk-model-en-us-0.22-lgraph` (128 MB, more accurate). Unzip it into `data\models\`.
+3. In the app: `voice status`, then `enable voice input`, then `test microphone`.
+
+Use: press **Mic** and speak; the words appear live in the message box. When you stop, the text stays in the box for you to read or fix, and you press Enter. Press the button again ("Done") to cancel. `enable voice output` makes replies speak aloud (Windows voice); `stop speaking`, the Stop button, or sending a new message silences it. `use voice model <folder>` picks another model.
+
+* **Private:** recognition is fully offline. The microphone opens only while you press Mic (it is always closed again), nothing runs in the background, and audio is never saved.
+* **Off until you turn it on:** `voice_input`, `voice_output` and `voice_autosend` are all off by default in every profile.
+* **Safe by design:** `enable voice autosend` sends what you say without Enter, but **never** a yes/no/keep both or an authorisation phrase. Those always wait in the box for you to press Enter, so a stray sound cannot approve an action.
+* Spoken text goes to PowerShell through standard input, never on the command line.
 
 ## Safety model
 Quanttum AI never runs free-form commands. It can only perform fixed, named *actions*, and the Action Engine enforces what each level needs:

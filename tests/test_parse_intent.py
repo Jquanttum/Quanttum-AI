@@ -252,6 +252,28 @@ class ParseIntentTests(unittest.TestCase):
         self.assertEqual(parse_intent("use profile standard").name,
                          "set_profile")
 
+    def test_voice_commands(self):
+        for text in ("voice", "voice status", "show voice", "Voice settings"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "voice_status")
+        for text in ("test microphone", "test mic", "check my microphone",
+                     "mic test", "microphone test"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "voice_test")
+        for text in ("stop speaking", "stop talking", "be quiet", "Quiet!"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "stop_speaking")
+        intent = parse_intent('use voice model "D:\\My Models\\small"')
+        self.assertEqual((intent.name, intent.entities["path"]),
+                         ("use_voice_model", '"D:\\My Models\\small"'))
+        self.assertEqual(parse_intent("use default voice model").entities,
+                         {"path": ""})
+
+    def test_voice_and_llm_model_commands_do_not_collide(self):
+        self.assertEqual(parse_intent("use model qwen2.5:3b").name, "use_model")
+        self.assertEqual(parse_intent("use voice model D:\\m").name,
+                         "use_voice_model")
+
     def test_authorise_needs_more_than_the_word_confirm(self):
         self.assertEqual(parse_intent("confirm").name, "confirm_yes")
         intent = parse_intent("Confirm delete reports.")
@@ -267,7 +289,8 @@ class ParseIntentTests(unittest.TestCase):
                    "create folder a in b", "undo", "allow folder x",
                    "show action log", "confirm foo bar", "open notepad",
                    "allow app x", "disallow app x", "show allowed apps", "show model",
-                   "use model x", "benchmark", "zzz"]
+                   "use model x", "benchmark", "voice status", "test mic",
+                   "stop speaking", "use voice model x", "zzz"]
         for text in samples:
             self.assertIn(parse_intent(text).name, INTENT_NAMES)
 

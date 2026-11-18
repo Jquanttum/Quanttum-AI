@@ -85,11 +85,18 @@ FEATURES = (
             "search. Off = slower live search.",
             ALL, aliases=("index", "file search index", "fast search")),
     Feature("voice_input", "Voice input",
-            "Speech recognition.", BIG,
-            aliases=("speech recognition", "microphone"), planned="0.4"),
+            "Speech recognition (Vosk, fully offline). The microphone only "
+            "opens while you press the Mic button.", frozenset(),
+            aliases=("speech recognition", "microphone", "mic"),
+            packages=("vosk", "pyaudio")),
     Feature("voice_output", "Voice output",
-            "Spoken replies (text-to-speech).", ALL,
-            aliases=("text to speech", "tts", "speech"), planned="0.4"),
+            "Reads replies aloud with the voice built into Windows.",
+            frozenset(), aliases=("text to speech", "tts", "speech",
+                                  "read aloud")),
+    Feature("voice_autosend", "Voice auto-send",
+            "Send what you say without pressing Enter. Never for yes/no "
+            "answers or authorisation. Needs voice input.", frozenset(),
+            aliases=("autosend", "hands free")),
     Feature("local_llm", "Local AI model",
             "A language model running on this PC through Ollama. Answers "
             "anything that isn't a command.", BIG,

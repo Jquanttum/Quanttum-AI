@@ -20,6 +20,9 @@ class FakeOllama:
         self.reply = reply                  # text, or callable(body) -> text
         self.token_delay = token_delay
         self.version = version
+        self.token_seconds = 0.1            # reported writing speed (10 tok/s)
+        self.prompt_tokens = 200            # reported prompt-processing stats
+        self.prompt_seconds = 4.0           # -> 50 tokens/second
         self.fail = None                    # see handler for the modes
         self.requests = []                  # (method, path, body)
         outer = self
@@ -99,8 +102,11 @@ class FakeOllama:
                                                  "content": ""},
                                      "done": True,
                                      "eval_count": len(pieces),
-                                     "eval_duration": int(len(pieces) * 1e8),
-                                     "load_duration": int(5e8)})
+                                     "eval_duration": int(len(pieces) * outer.token_seconds * 1e9),
+                                     "load_duration": int(5e8),
+                                     "prompt_eval_count": outer.prompt_tokens,
+                                     "prompt_eval_duration":
+                                         int(outer.prompt_seconds * 1e9)})
                     self.wfile.write(b"0\r\n\r\n")
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):

@@ -270,8 +270,8 @@ class FeatureCommandTests(CoreTestCase):
         self.assertIn("Profile: lite", answer)
         self.assertIn("3.8 GB", answer)
         self.assertIn("[on]  RAM monitor (ram_monitor)", answer)
-        self.assertIn("[n/a] Voice input (voice_input)", answer)
-        self.assertIn("planned for v0.4", answer)
+        self.assertIn("[n/a] Semantic memory (semantic_memory)", answer)
+        self.assertIn("planned for v0.5", answer)
 
     def test_toggle_by_friendly_name_and_undo_hint(self):
         answer = self.ask("disable ram monitor")
@@ -290,10 +290,10 @@ class FeatureCommandTests(CoreTestCase):
         self.assertTrue(self.features.is_enabled("ram_monitor"))
 
     def test_enabling_an_unbuilt_feature_is_saved_but_honest(self):
-        answer = self.ask("enable voice input")
+        answer = self.ask("enable workflow automation")
         self.assertIn("can't run yet", answer)
-        self.assertIn("planned for v0.4", answer)
-        self.assertTrue(self.features.override("voice_input"))
+        self.assertIn("planned for v0.6", answer)
+        self.assertTrue(self.features.override("automation"))
 
     def test_ambiguous_and_unknown_names(self):
         self.assertIn("could mean", self.ask("enable voice"))

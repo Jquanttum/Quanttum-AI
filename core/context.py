@@ -71,6 +71,7 @@ class Environment:
     app_catalog: Any = None         # AppCatalog (finds apps to approve)
     launcher: Callable = None       # (path) -> None; opens an approved file
     llm: Any = None                 # LLMBrain (None = no local model)
+    voice: Any = None               # VoiceService (None = no voice)
     on_token: Callable = None       # called with each streamed piece of a reply
     cancel: Any = None              # threading.Event: stop what is running
     memory_status: Callable = None  # () -> {"percent","total_gb",...} | None

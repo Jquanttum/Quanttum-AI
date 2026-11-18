@@ -161,11 +161,22 @@ class PromptTests(unittest.TestCase):
         self.assertEqual([m["role"] for m in messages],
                          ["system", "user", "user"])
         system = messages[0]["content"]
-        self.assertIn("Tuesday 17 November 2026, 09:05", system)
+        self.assertIn("Today is Tuesday 17 November 2026.", system)
+        self.assertNotIn("09:05", system)
         self.assertIn("cannot open apps", system)
         self.assertIn("never instructions", system)
         self.assertIn("- I prefer Python", system)
         self.assertEqual(messages[-1], {"role": "user", "content": "hello"})
+
+    def test_the_start_of_the_prompt_never_changes_during_a_day(self):
+        # Ollama reuses what it already read when the prompt starts the same
+        # way, so the prefix must not change minute to minute.
+        early = build_chat_messages("hi", [], [], datetime(2026, 11, 17, 9, 5))
+        later = build_chat_messages("hi", [], [], datetime(2026, 11, 17, 21, 47))
+        self.assertEqual(early[0]["content"], later[0]["content"])
+        with_memory = build_chat_messages("hi", ["a fact"], [],
+                                          datetime(2026, 11, 17, 9, 5))
+        self.assertTrue(with_memory[0]["content"].startswith(early[0]["content"]))
 
     def test_no_memory_block_when_there_are_none(self):
         system = build_chat_messages("hi", [], [], datetime(2026, 1, 1))[0]
@@ -319,7 +330,7 @@ class ChatTests(LLMCase):
             time.sleep(0.02)
         body = self.server.chat_requests()[0]
         self.assertEqual(body["messages"], [])
-        self.assertEqual(body["keep_alive"], "10m")
+        self.assertEqual(body["keep_alive"], "30m")
 
 
 class CommandUnderstandingTests(LLMCase):
@@ -446,9 +457,74 @@ class ModelCommandTests(LLMCase):
     def test_benchmark_reports_speed_and_a_verdict(self):
         answer = self.ask("benchmark")
         self.assertIn("Model: llama3.2:3b", answer)
-        self.assertIn("10.0 tokens/second", answer)
+        self.assertIn("Writing speed: 10.0 tokens/second", answer)
+        self.assertIn("Reading speed: 50.0 tokens/second", answer)
+        self.assertIn("about 6 s before the first word", answer)
         self.assertIn("Comfortable", answer)
-        self.assertIn("Loading the model took 0.5", answer) if False else None
+
+    def test_models_stay_loaded_longer_on_bigger_profiles(self):
+        self.ask("tell me about the moon")
+        self.assertEqual(self.server.chat_requests()[-1]["keep_alive"], "30m")
+        self.features.set_profile("full")
+        self.ask("tell me about mars")
+        self.assertEqual(self.server.chat_requests()[-1]["keep_alive"], "60m")
+
+    def test_benchmark_caps_replies_to_what_this_pc_can_write_in_time(self):
+        self.server.reply = " ".join(["w"] * 24)       # 24 tokens at 10 tok/s
+        self.assertEqual(self.assistant.llm.chat_options()["num_predict"], 400)
+        # pretend this PC only manages 5 tokens/second
+        self.features.set_option("llm_speed_tps", 5.0)
+        self.features.set_option("llm_speed_model", "llama3.2:3b")
+        self.assertEqual(self.assistant.llm.chat_options()["num_predict"], 225)
+        self.ask("tell me about the moon")
+        self.assertEqual(self.server.chat_requests()[-1]["options"]["num_predict"],
+                         225)
+
+    def test_a_fast_pc_keeps_the_full_profile_cap(self):
+        self.features.set_option("llm_speed_tps", 40.0)
+        self.features.set_option("llm_speed_model", "llama3.2:3b")
+        self.assertEqual(self.assistant.llm.chat_options()["num_predict"], 400)
+
+    def test_a_very_slow_pc_still_gets_usable_replies(self):
+        self.features.set_option("llm_speed_tps", 0.5)
+        self.features.set_option("llm_speed_model", "llama3.2:3b")
+        self.assertEqual(self.assistant.llm.chat_options()["num_predict"], 80)
+
+    def test_the_measurement_only_applies_to_the_model_it_was_taken_with(self):
+        self.features.set_option("llm_speed_tps", 5.0)
+        self.features.set_option("llm_speed_model", "some-other-model:8b")
+        self.assertEqual(self.assistant.llm.chat_options()["num_predict"], 400)
+
+    def test_benchmark_saves_its_measurement_and_says_what_it_changed(self):
+        self.server.reply = " ".join(["w"] * 24)
+        self.server.token_seconds = 0.2                  # 5 tokens/second
+        answer = self.ask("benchmark")
+        self.assertEqual(self.features.option("llm_speed_model"), "llama3.2:3b")
+        self.assertAlmostEqual(self.features.option("llm_speed_tps"), 5.0)
+        self.assertIn("I'll now cap replies at about 225 tokens", answer)
+        self.assertEqual(self.assistant.llm.chat_options()["num_predict"], 225)
+
+    def test_a_fast_benchmark_does_not_shorten_replies(self):
+        self.server.reply = " ".join(["w"] * 24)
+        answer = self.ask("benchmark")                   # 10 tok/s
+        self.assertNotIn("I'll now cap", answer)
+        self.assertEqual(self.assistant.llm.chat_options()["num_predict"], 400)
+
+    def test_benchmark_prompt_is_unique_each_run_so_the_cache_cannot_hide_cost(self):
+        self.ask("benchmark")
+        time.sleep(0.01)
+        self.ask("benchmark")
+        first, second = [r["messages"][0]["content"]
+                         for r in self.server.chat_requests()[:2]]
+        self.assertTrue(first.startswith("[benchmark "))
+        self.assertNotEqual(first, second)
+
+    def test_a_long_wait_before_the_first_word_is_flagged(self):
+        self.server.prompt_tokens = 150
+        self.server.prompt_seconds = 30.0           # 5 tokens/second reading
+        answer = self.ask("benchmark")
+        self.assertIn("about 60 s before the first word", answer)
+        self.assertIn("Slow on this PC", answer)
 
     def test_benchmark_without_ollama(self):
         self.server.stop()

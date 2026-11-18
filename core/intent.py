@@ -29,6 +29,10 @@ INTENT_NAMES = (
     "llm_status",
     "use_model",
     "benchmark_model",
+    "voice_status",
+    "voice_test",
+    "stop_speaking",
+    "use_voice_model",
     "system_info",
     "find_files",
     "show_allowed_folders",
@@ -186,6 +190,25 @@ BENCHMARK_RE = re.compile(
     r"^benchmark(?:\s+(?:the\s+)?(?:model|llm|ai))?$", re.IGNORECASE)
 
 
+VOICE_STATUS_RE = re.compile(
+    r"^(?:show\s+)?voice(?:\s+(?:status|settings))?$", re.IGNORECASE)
+
+VOICE_TEST_RE = re.compile(
+    r"^(?:(?:test|check)\s+(?:the\s+|my\s+)?(?:mic|microphone)|"
+    r"(?:mic|microphone)\s+test)$", re.IGNORECASE)
+
+STOP_SPEAKING_RE = re.compile(
+    r"^(?:stop\s+(?:speaking|talking|reading)|be\s+quiet|quiet)$",
+    re.IGNORECASE)
+
+USE_VOICE_MODEL_RE = re.compile(
+    r"^use\s+(?:the\s+)?voice\s+model\s+(.+)$", re.IGNORECASE)
+
+USE_DEFAULT_VOICE_MODEL_RE = re.compile(
+    r"^use\s+(?:the\s+)?(?:default|automatic|auto)\s+voice\s+model$",
+    re.IGNORECASE)
+
+
 def _parse_settings_command(message):
     """Return an Intent for a settings command, or None."""
 
@@ -197,6 +220,23 @@ def _parse_settings_command(message):
 
     if LLM_STATUS_RE.match(spoken):
         return Intent("llm_status", {}, 1.0, message)
+
+    if VOICE_STATUS_RE.match(spoken):
+        return Intent("voice_status", {}, 1.0, message)
+
+    if VOICE_TEST_RE.match(spoken):
+        return Intent("voice_test", {}, 1.0, message)
+
+    if STOP_SPEAKING_RE.match(spoken):
+        return Intent("stop_speaking", {}, 1.0, message)
+
+    if USE_DEFAULT_VOICE_MODEL_RE.match(spoken):
+        return Intent("use_voice_model", {"path": ""}, 1.0, message)
+
+    match = USE_VOICE_MODEL_RE.match(spoken)
+    if match:
+        return Intent("use_voice_model", {"path": match.group(1).strip()}, 1.0,
+                      message)
 
     if BENCHMARK_RE.match(spoken):
         return Intent("benchmark_model", {}, 1.0, message)

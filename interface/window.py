@@ -6,17 +6,24 @@ from core.memory import Memory
 from core.assistant import Assistant
 from core.features import FeatureRegistry
 from core.fileindex import FileIndex
+from core.intent import parse_intent
 from core.llm import LLMError, OllamaClient
+from core.voice import VoiceError, VoiceService
 from core.apps import AppPolicy
 from core.policy import FolderPolicy, PermissionsStore, default_user_folders
 from core.resource_monitor import get_memory_status
 from config import (
     APP_NAME, APP_VERSION, MAX_RAM_WARNING_PERCENT, SETTINGS_PATH,
-    PERMISSIONS_PATH, FILE_INDEX_PATH, OLLAMA_HOST,
+    PERMISSIONS_PATH, FILE_INDEX_PATH, OLLAMA_HOST, VOSK_MODELS_DIR,
 )
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+# Spoken text is never sent automatically if it would answer a question the
+# assistant asked: a stray sound must not be able to approve an action.
+VOICE_NEVER_AUTOSEND = {"confirm_yes", "confirm_no", "confirm_alt", "authorise"}
+
 
 class QuanttumApp(ctk.CTk):
     def __init__(self):
@@ -36,9 +43,11 @@ class QuanttumApp(ctk.CTk):
             llm_problem = ""
         except LLMError as error:         # e.g. a non-local host in config
             llm_client, llm_problem = None, str(error)
+        self.voice = VoiceService(self.features, [VOSK_MODELS_DIR])
         self.assistant = Assistant(self.memory, features=self.features,
                                    policy=self.policy, index=self.index,
-                                   apps=self.apps, llm_client=llm_client)
+                                   apps=self.apps, llm_client=llm_client,
+                                   voice=self.voice)
 
         # Messages run on a worker thread so the window never freezes while
         # the model is thinking. The worker only puts events on this queue;
@@ -46,6 +55,11 @@ class QuanttumApp(ctk.CTk):
         self.events = queue.Queue()
         self.busy = False
         self.streamed = ""
+
+        # Voice: one listening round at a time, also on its own worker thread.
+        self.voice_events = queue.Queue()
+        self.voice_cancel = threading.Event()
+        self.listening = False
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -78,14 +92,18 @@ class QuanttumApp(ctk.CTk):
         self.entry.grid(row=0, column=0, padx=(10, 8), pady=10, sticky="ew")
         self.entry.bind("<Return>", self.send_message)
 
+        self.mic_button = ctk.CTkButton(
+            bottom, text="Mic", width=70, command=self.toggle_listening)
+        self.mic_button.grid(row=0, column=1, padx=(0, 8), pady=10)
+
         self.send_button = ctk.CTkButton(
             bottom, text="Send", width=90, command=self.send_message)
-        self.send_button.grid(row=0, column=1, padx=(0, 10), pady=10)
+        self.send_button.grid(row=0, column=2, padx=(0, 10), pady=10)
 
         self.stop_button = ctk.CTkButton(
             bottom, text="Stop", width=90, fg_color="#B54747",
-            hover_color="#8F3535", command=self.assistant.cancel)
-        self.stop_button.grid(row=0, column=2, padx=(0, 10), pady=10)
+            hover_color="#8F3535", command=self.stop_everything)
+        self.stop_button.grid(row=0, column=3, padx=(0, 10), pady=10)
         self.stop_button.grid_remove()
 
         self.resource_label = ctk.CTkLabel(self, text="Checking system memory...")
@@ -125,6 +143,7 @@ class QuanttumApp(ctk.CTk):
             return
 
         self.entry.delete(0, "end")
+        self.voice.stop_speaking()
         self.write_chat("You", message)
         self.set_busy(True)
         threading.Thread(target=self._worker, args=(message,),
@@ -162,6 +181,8 @@ class QuanttumApp(ctk.CTk):
         self.busy = busy
         self.status_label.configure(text="THINKING..." if busy else "CORE ONLINE")
         self.send_button.configure(state="disabled" if busy else "normal")
+        self.mic_button.configure(
+            state="disabled" if busy and not self.listening else "normal")
 
         if busy:
             self.stop_button.grid()
@@ -203,6 +224,105 @@ class QuanttumApp(ctk.CTk):
         self.set_busy(False)
         self.entry.focus()
 
+        if not self.listening and self.features.is_enabled("voice_output"):
+            self.voice.speak(answer)
+
+    # ---- voice: press Mic, speak, review the text, press Enter ------------
+
+    def stop_everything(self):
+        self.assistant.cancel()
+        self.voice.stop_speaking()
+        self.voice_cancel.set()
+
+    def toggle_listening(self):
+        if self.listening:
+            self.voice_cancel.set()
+            return
+
+        if self.busy:
+            return
+
+        status = self.features.status("voice_input")
+
+        if not status.enabled:
+            reason = f": {status.reason}" if status.reason else ""
+            self.write_chat(
+                "Quanttum AI",
+                f"Voice input is {status.state}{reason}. "
+                "Say: voice status, or: enable voice input")
+            return
+
+        self.voice.stop_speaking()
+        self.voice_cancel.clear()
+        self.listening = True
+        self.mic_button.configure(text="Done")
+        self.status_label.configure(text="LISTENING...")
+        self.entry.delete(0, "end")
+        threading.Thread(target=self._listen_worker, daemon=True,
+                         name="quanttum-listen").start()
+        self.after(50, self._poll_voice)
+
+    def _listen_worker(self):
+        """Worker thread: the microphone is open only while this runs."""
+
+        try:
+            result = self.voice.listen(
+                on_partial=lambda text: self.voice_events.put(("partial", text)),
+                cancel=self.voice_cancel)
+            self.voice_events.put(("heard", result))
+        except VoiceError as error:
+            self.voice_events.put(("error", str(error)))
+        except Exception as error:
+            self.voice_events.put(("error", f"Voice input failed: {error}"))
+
+    def _poll_voice(self):
+        try:
+            while True:
+                kind, value = self.voice_events.get_nowait()
+
+                if kind == "partial":
+                    self.entry.delete(0, "end")
+                    self.entry.insert(0, value)
+                else:
+                    self.finish_listening(kind, value)
+                    return
+        except queue.Empty:
+            pass
+
+        if self.listening:
+            self.after(50, self._poll_voice)
+
+    def finish_listening(self, kind, value):
+        self.listening = False
+        self.mic_button.configure(text="Mic")
+        self.status_label.configure(text="CORE ONLINE")
+
+        if kind == "error":
+            self.write_chat("Quanttum AI", value)
+            return
+
+        text = value.text.strip()
+        self.entry.delete(0, "end")
+
+        if value.reason == "cancelled":
+            return
+
+        if not text:
+            self.write_chat(
+                "Quanttum AI",
+                "I didn't hear anything. Say: test microphone, to check it.")
+            return
+
+        # The transcript goes into the box so you can read and fix it. It is
+        # only sent for you when auto-send is on, and never if it is an
+        # answer to a question (yes / no / an authorisation phrase).
+        self.entry.insert(0, text)
+        self.entry.focus()
+
+        if self.features.is_enabled("voice_autosend") and (
+                parse_intent(text).name not in VOICE_NEVER_AUTOSEND):
+            self.send_message()
+
     def update_resource_status(self):
         # The toggle is re-checked every cycle, so "enable/disable ram
         # monitor" takes effect immediately, without a restart.
@@ -230,6 +350,7 @@ class QuanttumApp(ctk.CTk):
         self.after(5000, self.update_resource_status)
 
     def on_close(self):
+        self.voice_cancel.set()
         self.assistant.shutdown()
         self.memory.close()
         self.destroy()

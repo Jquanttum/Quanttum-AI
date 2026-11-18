@@ -1,0 +1,5 @@
+# Optional: only needed for voice input. Install with:
+#   py -3.13 -m pip install -r requirements-voice.txt
+# You also need a Vosk speech model (see README, section Voice).
+vosk
+pyaudio

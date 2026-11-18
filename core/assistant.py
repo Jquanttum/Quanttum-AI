@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 class Assistant:
     def __init__(self, memory, clock=datetime.now, features=None, policy=None,
                  index=None, memory_status=get_memory_status, apps=None,
-                 app_catalog=None, launcher=launch_target, llm_client=None):
+                 app_catalog=None, launcher=launch_target, llm_client=None,
+                 voice=None):
         self.memory = memory
         self.state = ConversationState()
         # Without explicit services, use ones that never touch disk: no
@@ -46,6 +47,15 @@ class Assistant:
                     if llm_client is not None else None)
         if self.llm is not None:
             self.features.set_probe("local_llm", self.llm.unavailable_reason)
+        self.voice = voice
+        if voice is not None:
+            self.features.set_probe("voice_input", voice.input_unavailable_reason)
+            self.features.set_probe("voice_output",
+                                    voice.output_unavailable_reason)
+            self.features.set_probe(
+                "voice_autosend",
+                lambda: "" if self.features.is_enabled("voice_input")
+                else "needs voice input")
         self.audit = AuditLog(memory.connection)
         self.actions = ActionEngine(self.audit, default_actions())
         self.env = Environment(
@@ -53,7 +63,7 @@ class Assistant:
             features=self.features, actions=self.actions, policy=self.policy,
             index=self.index, memory_status=memory_status, apps=self.apps,
             app_catalog=self.app_catalog, launcher=launcher, llm=self.llm,
-            cancel=self.cancel_event)
+            voice=self.voice, cancel=self.cancel_event)
         self.handlers = build_registry()
 
     def _llm_commands_enabled(self):
@@ -67,7 +77,7 @@ class Assistant:
         try:
             model = self.llm.selected_model()
             if model:
-                self.llm.client.chat(model, [], keep_alive="10m",
+                self.llm.client.chat(model, [], keep_alive=self.llm.keep_alive(),
                                      cancel=self.cancel_event)
         except Exception:
             logger.debug("model warm-up skipped", exc_info=True)
@@ -98,6 +108,9 @@ class Assistant:
 
     def shutdown(self):
         self.cancel_event.set()
+
+        if self.voice is not None:
+            self.voice.stop_speaking()
 
         if self.index is not None:
             self.index.stop()

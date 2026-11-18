@@ -35,10 +35,17 @@ class ChatResult:
     seconds: float = 0.0             # time spent generating
     load_seconds: float = 0.0        # time spent loading the model
     cancelled: bool = False
+    prompt_tokens: int = 0           # prompt tokens actually processed (cached
+    prompt_seconds: float = 0.0      # ones are not counted)
 
     @property
     def tokens_per_second(self):
         return self.tokens / self.seconds if self.seconds > 0 else 0.0
+
+    @property
+    def prompt_tokens_per_second(self):
+        return (self.prompt_tokens / self.prompt_seconds
+                if self.prompt_seconds > 0 else 0.0)
 
 
 class OllamaClient:
@@ -212,6 +219,9 @@ class OllamaClient:
                     result.tokens = int(chunk.get("eval_count") or 0)
                     result.seconds = (chunk.get("eval_duration") or 0) / 1e9
                     result.load_seconds = (chunk.get("load_duration") or 0) / 1e9
+                    result.prompt_tokens = int(chunk.get("prompt_eval_count") or 0)
+                    result.prompt_seconds = (
+                        chunk.get("prompt_eval_duration") or 0) / 1e9
                     break
 
         except LLMError:

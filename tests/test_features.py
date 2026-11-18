@@ -219,7 +219,7 @@ class ResolveTests(RegistryTestCase):
         resolution = self.registry_.resolve("voice")
         self.assertEqual(resolution.key, "")
         self.assertEqual(set(resolution.candidates),
-                         {"voice_input", "voice_output"})
+                         {"voice_input", "voice_output", "voice_autosend"})
 
     def test_unknown(self):
         resolution = self.registry_.resolve("the lights")

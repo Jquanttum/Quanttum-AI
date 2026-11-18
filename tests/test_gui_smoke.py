@@ -15,8 +15,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from core.features import FeatureRegistry
 from core.memory import Memory
+from core.voice import VoiceService
 from tests.fake_ollama import FakeOllama
+from tests.fake_voice import FakeMic, FakeRecognizer, FakeSpeaker
 
 FAKE_RAM = {"percent": 40, "total_gb": 3.83, "available_gb": 2.3}
 
@@ -42,10 +45,34 @@ class WindowSmokeTest(unittest.TestCase):
         self.server = FakeOllama(reply="I am the local model.").start()
         db_path = str(base / "gui.db")
 
+        # voice: a fake microphone, recogniser and speaker, and a fake model
+        self.models = base / "vosk-models"
+        (self.models / "m" / "am").mkdir(parents=True)
+        (self.models / "m" / "conf").mkdir()
+        self.speaker = FakeSpeaker()
+        self.mic = FakeMic(real_delay=0.02)
+        self.recognizer = FakeRecognizer({})
+        test = self
+
+        class QuickVoice(VoiceService):
+            def listen(self, *args, **kwargs):
+                kwargs.setdefault("silence_timeout", 0.4)
+                return super().listen(*args, **kwargs)
+
+        def make_voice(features, folders):
+            return QuickVoice(features, folders, mic_factory=lambda: test.mic,
+                              recognizer_factory=lambda path: test.recognizer,
+                              speaker=test.speaker)
+
         self.patches = [
             mock.patch.object(window, "Memory", lambda: Memory(db_path)),
             mock.patch.object(window, "SETTINGS_PATH", str(self.settings_path)),
             mock.patch.object(window, "OLLAMA_HOST", self.server.url),
+            mock.patch.object(window, "VoiceService", make_voice),
+            mock.patch.object(window, "VOSK_MODELS_DIR", str(self.models)),
+            mock.patch.object(window, "FeatureRegistry",
+                              lambda path: FeatureRegistry(
+                                  path, find_spec=lambda name: object())),
             mock.patch.object(window, "PERMISSIONS_PATH",
                               str(base / "permissions.json")),
             mock.patch.object(window, "FILE_INDEX_PATH",
@@ -177,6 +204,133 @@ class WindowSmokeTest(unittest.TestCase):
         self.app.assistant.llm.snapshot(force=True)
         self.say("what is a quasar")
         self.assertIn("local model isn't available", self.chat())
+
+    # ---- voice -------------------------------------------------------
+
+    def wait_until(self, condition, timeout=10, message="condition not met"):
+        deadline = time.time() + timeout
+
+        while not condition() and time.time() < deadline:
+            self.app.update()
+            time.sleep(0.01)
+
+        self.app.update()
+        self.assertTrue(condition(), message)
+
+    def enable(self, *keys):
+        for key in keys:
+            self.app.features.set_enabled(key, True)
+
+    def listen(self):
+        self.app.toggle_listening()
+        self.assertTrue(self.app.listening)
+        self.wait_until(lambda: not self.app.listening, 10,
+                        "listening never finished")
+
+    def test_the_mic_fills_the_box_live_and_waits_for_you_to_press_enter(self):
+        self.enable("voice_input")
+        self.recognizer.script = {3: "open", 5: "open note",
+                                  8: ("final", "open notepad")}
+        self.app.toggle_listening()
+        self.assertEqual(self.app.status_label.cget("text"), "LISTENING...")
+        self.wait_until(lambda: self.app.entry.get() in ("open", "open note"),
+                        message="no live transcript appeared")
+        self.wait_until(lambda: not self.app.listening)
+        self.assertEqual(self.app.entry.get(), "open notepad")
+        self.assertNotIn("You\nopen notepad", self.chat())      # not sent
+        self.assertEqual(self.app.status_label.cget("text"), "CORE ONLINE")
+        self.assertEqual(self.app.mic_button.cget("text"), "Mic")
+        self.assertTrue(self.mic.closed)                          # mic released
+
+    def test_pressing_the_mic_again_cancels_and_clears_the_box(self):
+        self.enable("voice_input")
+        self.recognizer.script = {2: "hello"}                     # never ends
+        self.app.toggle_listening()
+        self.wait_until(lambda: self.app.entry.get() == "hello")
+        self.app.toggle_listening()                               # "Done"
+        self.wait_until(lambda: not self.app.listening)
+        self.assertEqual(self.app.entry.get(), "")
+        self.assertTrue(self.mic.closed)
+
+    def test_silence_is_reported_helpfully(self):
+        self.enable("voice_input")
+        self.listen()
+        self.assertIn("I didn't hear anything", self.chat())
+        self.assertIn("test microphone", self.chat())
+
+    def test_unavailable_voice_is_explained_when_you_press_the_mic(self):
+        self.app.toggle_listening()
+        self.assertFalse(self.app.listening)
+        self.assertIn("Voice input is disabled", self.chat())
+        self.assertFalse(self.mic.opened)                        # never opened
+
+    def test_autosend_sends_ordinary_sentences(self):
+        self.enable("voice_input", "voice_autosend")
+        self.recognizer.script = {2: ("final", "why is the sky blue")}
+        self.listen()
+        self.wait_until(lambda: not self.app.busy and
+                        "I am the local model." in self.chat())
+        self.assertIn("why is the sky blue", self.chat())
+
+    def test_autosend_never_sends_an_answer_to_a_question(self):
+        self.enable("voice_input", "voice_autosend")
+        for spoken in ("yes", "no", "keep both", "confirm delete reports"):
+            with self.subTest(spoken=spoken):
+                self.app.entry.delete(0, "end")
+                self.recognizer.script = {2: ("final", spoken)}
+                self.mic.chunks, self.recognizer.calls = [], 0
+                self.listen()
+                self.assertEqual(self.app.entry.get(), spoken)   # waits for you
+                self.assertFalse(self.app.busy)
+                self.assertNotIn(f"You\n{spoken}", self.chat())
+
+    def test_a_spoken_yes_cannot_approve_an_action_without_enter(self):
+        self.enable("voice_input", "voice_autosend")
+        docs = self.docs
+        self.say(f"create folder Reports in {docs}")             # asks first
+        self.recognizer.script = {2: ("final", "yes")}
+        self.listen()
+        self.assertFalse((docs / "Reports").exists())            # not approved
+        self.app.send_message()                                  # you press Enter
+        self.wait_until(lambda: not self.app.busy)
+        self.assertTrue((docs / "Reports").is_dir())
+
+    def test_replies_are_read_aloud_when_voice_output_is_on(self):
+        self.enable("voice_output")
+        self.say("why is the sky blue")
+        self.assertEqual(self.speaker.spoken, ["I am the local model."])
+
+    def test_nothing_is_spoken_when_voice_output_is_off(self):
+        self.say("why is the sky blue")
+        self.assertEqual(self.speaker.spoken, [])
+
+    def test_sending_a_message_or_pressing_stop_silences_speech(self):
+        self.enable("voice_output")
+        self.say("why is the sky blue")
+        before = self.speaker.stops
+        self.say("another question")
+        self.assertGreater(self.speaker.stops, before)
+        before = self.speaker.stops
+        self.app.stop_everything()
+        self.assertGreater(self.speaker.stops, before)
+
+    def test_the_mic_is_ignored_while_the_model_is_replying(self):
+        self.enable("voice_input")
+        self.server.reply = " ".join(f"w{i}" for i in range(30))
+        self.server.token_delay = 0.03
+        self.say("write something", wait=False)
+        self.app.toggle_listening()
+        self.assertFalse(self.app.listening)
+        self.wait_until(lambda: not self.app.busy, 20)
+
+    def test_closing_the_window_while_listening_releases_the_mic(self):
+        self.enable("voice_input")
+        self.recognizer.script = {2: "hello"}
+        self.app.toggle_listening()
+        self.wait_until(lambda: self.mic.opened)
+        self.app.on_close()
+        self.wait_until(lambda: self.mic.closed)
+        self.app = None
 
     def test_show_features_renders(self):
         self.say("show features")
