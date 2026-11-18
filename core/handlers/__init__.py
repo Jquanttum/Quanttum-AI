@@ -6,7 +6,8 @@ parse_intent() to produce it, and add one line to build_registry().
 """
 
 from core.handlers import (
-    action_commands, basic, confirmation, memory_commands, settings_commands,
+    action_commands, basic, confirmation, llm_commands, memory_commands,
+    settings_commands,
 )
 
 
@@ -27,6 +28,9 @@ def build_registry():
         "show_profile": settings_commands.show_profile,
         "set_feature": settings_commands.set_feature,
         "set_profile": settings_commands.set_profile,
+        "llm_status": llm_commands.llm_status,
+        "use_model": llm_commands.use_model,
+        "benchmark_model": llm_commands.benchmark_model,
         "system_info": action_commands.system_info,
         "find_files": action_commands.find_files,
         "show_allowed_folders": action_commands.show_allowed_folders,

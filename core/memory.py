@@ -44,7 +44,11 @@ class Memory:
         self.database_path = str(database_path)
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
 
-        self.connection = sqlite3.connect(self.database_path)
+        # The chat window runs each message on a worker thread. Every use of
+        # this connection is serialised by the Assistant's lock, so sharing
+        # it between threads is safe.
+        self.connection = sqlite3.connect(self.database_path,
+                                          check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
 
         try:

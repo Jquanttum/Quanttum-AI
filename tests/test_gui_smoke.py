@@ -10,11 +10,13 @@ On a machine without a display (or without customtkinter) it is skipped.
 
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from core.memory import Memory
+from tests.fake_ollama import FakeOllama
 
 FAKE_RAM = {"percent": 40, "total_gb": 3.83, "available_gb": 2.3}
 
@@ -35,11 +37,15 @@ class WindowSmokeTest(unittest.TestCase):
         self.docs.mkdir()
         (self.docs / "Exam Notes.docx").write_text("x")
         self.settings_path = base / "settings.json"
+        # standard profile = the local model is on by default
+        self.settings_path.write_text('{"profile": "standard"}', encoding="utf-8")
+        self.server = FakeOllama(reply="I am the local model.").start()
         db_path = str(base / "gui.db")
 
         self.patches = [
             mock.patch.object(window, "Memory", lambda: Memory(db_path)),
             mock.patch.object(window, "SETTINGS_PATH", str(self.settings_path)),
+            mock.patch.object(window, "OLLAMA_HOST", self.server.url),
             mock.patch.object(window, "PERMISSIONS_PATH",
                               str(base / "permissions.json")),
             mock.patch.object(window, "FILE_INDEX_PATH",
@@ -65,12 +71,27 @@ class WindowSmokeTest(unittest.TestCase):
             patch.stop()
         if getattr(self, "app", None):
             self.app.on_close()
+        if getattr(self, "server", None):
+            self.server.stop()
         self.tmp.cleanup()
 
-    def say(self, text):
+    def say(self, text, wait=True):
         self.app.entry.insert(0, text)
         self.app.send_message()
         self.app.update()
+
+        if wait:
+            self.wait_until_idle()
+
+    def wait_until_idle(self, timeout=15):
+        deadline = time.time() + timeout
+
+        while self.app.busy and time.time() < deadline:
+            self.app.update()
+            time.sleep(0.01)
+
+        self.app.update()
+        self.assertFalse(self.app.busy, "the window never finished replying")
 
     def chat(self):
         return self.app.chat.get("1.0", "end")
@@ -118,6 +139,44 @@ class WindowSmokeTest(unittest.TestCase):
         self.app.on_close()
         self.assertFalse(self.app.index.indexing)
         self.app = None
+
+    def test_the_local_model_answers_and_streams_into_the_chat(self):
+        self.server.reply = "one two three four"
+        self.say("why is the sky blue")
+        self.assertIn("one two three four", self.chat())
+        self.assertFalse(self.app.busy)
+        self.assertEqual(self.app.status_label.cget("text"), "CORE ONLINE")
+        self.assertFalse(self.app.stop_button.winfo_ismapped())
+
+    def test_the_window_stays_responsive_while_the_model_is_thinking(self):
+        self.server.reply = " ".join(f"w{i}" for i in range(40))
+        self.server.token_delay = 0.03
+        self.say("write something long", wait=False)
+        self.assertTrue(self.app.busy)
+        self.assertEqual(self.app.status_label.cget("text"), "THINKING...")
+        self.app.update()                          # the UI keeps processing
+        self.say("a second message while busy", wait=False)   # ignored
+        self.wait_until_idle(20)
+        self.assertNotIn("a second message while busy", self.chat())
+
+    def test_stop_ends_a_reply(self):
+        self.server.reply = " ".join(f"w{i}" for i in range(300))
+        self.server.token_delay = 0.03
+        self.say("write an essay", wait=False)
+        deadline = time.time() + 5
+        while "w2 " not in self.chat() and time.time() < deadline:
+            self.app.update()
+            time.sleep(0.01)
+        self.app.assistant.cancel()
+        self.wait_until_idle()
+        self.assertIn("[stopped]", self.chat())
+        self.assertNotIn("w250", self.chat())
+
+    def test_an_unreachable_model_is_explained_in_the_chat(self):
+        self.server.stop()
+        self.app.assistant.llm.snapshot(force=True)
+        self.say("what is a quasar")
+        self.assertIn("local model isn't available", self.chat())
 
     def test_show_features_renders(self):
         self.say("show features")

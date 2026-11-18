@@ -91,9 +91,17 @@ FEATURES = (
             "Spoken replies (text-to-speech).", ALL,
             aliases=("text to speech", "tts", "speech"), planned="0.4"),
     Feature("local_llm", "Local AI model",
-            "A language model running on this PC through Ollama.", BIG,
-            aliases=("llm", "local model", "ollama", "language model"),
-            min_total_gb=7.0, planned="0.5"),
+            "A language model running on this PC through Ollama. Answers "
+            "anything that isn't a command.", BIG,
+            aliases=("llm", "local model", "ollama", "language model",
+                     "ai model"),
+            min_total_gb=7.0),
+    Feature("llm_commands", "AI command understanding",
+            "Lets the local model turn free-form sentences into commands. "
+            "Slower: every unrecognised message costs an extra model call. "
+            "Needs the local AI model.",
+            frozenset(), aliases=("smart commands", "ai commands",
+                                  "natural language commands")),
     Feature("semantic_memory", "Semantic memory",
             "Meaning-based memory search using embeddings.", BIG,
             aliases=("embeddings", "semantic search"),
@@ -155,6 +163,7 @@ class FeatureRegistry:
         self._find_spec = find_spec
         self._features = {feature.key: feature for feature in features}
         self.settings_error = ""
+        self._probes = {}
         self._settings = self._load()
 
     # -----------------------------------------
@@ -163,7 +172,8 @@ class FeatureRegistry:
 
     @staticmethod
     def _blank():
-        return {"version": SETTINGS_VERSION, "profile": None, "features": {}}
+        return {"version": SETTINGS_VERSION, "profile": None, "features": {},
+                "options": {}}
 
     def _load(self):
         settings = self._blank()
@@ -195,6 +205,14 @@ class FeatureRegistry:
             settings["features"] = {
                 key: value for key, value in overrides.items()
                 if isinstance(key, str) and isinstance(value, bool)
+            }
+
+        options = raw.get("options", {})
+        if isinstance(options, dict):
+            settings["options"] = {
+                key: value for key, value in options.items()
+                if isinstance(key, str)
+                and isinstance(value, (str, int, float, bool))
             }
 
         return settings
@@ -347,6 +365,31 @@ class FeatureRegistry:
 
         return Resolution("", tuple(matches))
 
+    # ---- options (free-form settings such as the chosen model) ----------
+
+    def option(self, key, default=None):
+        return self._settings["options"].get(key, default)
+
+    def set_option(self, key, value):
+        """Save an option, or clear it with None."""
+
+        def mutate(settings):
+            if value is None:
+                settings["options"].pop(key, None)
+            else:
+                settings["options"][key] = value
+
+        self._commit(mutate)
+
+    # ---- runtime probes ---------------------------------------------------
+
+    def set_probe(self, key, probe):
+        """Register a check that returns "" when the feature can run, or the
+        reason it can't (for example: "Ollama isn't running")."""
+
+        self._features[key]
+        self._probes[key] = probe
+
     def override(self, key):
         """True / False if the user chose, None if following the profile."""
 
@@ -392,6 +435,12 @@ class FeatureRegistry:
             return FeatureStatus(
                 feature, "unavailable",
                 "needs Python package: " + ", ".join(missing), "", source)
+
+        probe = self._probes.get(key)
+        if probe is not None:
+            reason = probe()
+            if reason:
+                return FeatureStatus(feature, "unavailable", reason, "", source)
 
         warning = ""
 

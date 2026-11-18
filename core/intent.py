@@ -26,6 +26,9 @@ INTENT_NAMES = (
     "show_profile",
     "set_feature",
     "set_profile",
+    "llm_status",
+    "use_model",
+    "benchmark_model",
     "system_info",
     "find_files",
     "show_allowed_folders",
@@ -163,6 +166,26 @@ RESET_FEATURE_RE = re.compile(
 )
 
 
+LLM_STATUS_RE = re.compile(
+    r"^(?:(?:show|list)\s+)?(?:models?|llm|ollama|(?:ai|local)\s+model)"
+    r"(?:\s+status)?$",
+    re.IGNORECASE
+)
+
+USE_MODEL_RE = re.compile(
+    r"^(?:use|switch\s+to|set)\s+(?:the\s+)?model\s+(?:to\s+)?(\S+)$",
+    re.IGNORECASE
+)
+
+USE_DEFAULT_MODEL_RE = re.compile(
+    r"^(?:use|switch\s+to)\s+(?:the\s+)?(?:default|automatic|auto)\s+model$",
+    re.IGNORECASE
+)
+
+BENCHMARK_RE = re.compile(
+    r"^benchmark(?:\s+(?:the\s+)?(?:model|llm|ai))?$", re.IGNORECASE)
+
+
 def _parse_settings_command(message):
     """Return an Intent for a settings command, or None."""
 
@@ -171,6 +194,19 @@ def _parse_settings_command(message):
 
     if SHOW_FEATURES_RE.match(spoken):
         return Intent("show_features", {}, 1.0, message)
+
+    if LLM_STATUS_RE.match(spoken):
+        return Intent("llm_status", {}, 1.0, message)
+
+    if BENCHMARK_RE.match(spoken):
+        return Intent("benchmark_model", {}, 1.0, message)
+
+    if USE_DEFAULT_MODEL_RE.match(spoken):
+        return Intent("use_model", {"model": ""}, 1.0, message)
+
+    match = USE_MODEL_RE.match(spoken)
+    if match:
+        return Intent("use_model", {"model": match.group(1)}, 1.0, message)
 
     if SHOW_PROFILE_RE.match(spoken):
         return Intent("show_profile", {}, 1.0, message)

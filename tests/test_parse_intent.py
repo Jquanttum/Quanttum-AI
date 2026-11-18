@@ -234,6 +234,24 @@ class ParseIntentTests(unittest.TestCase):
         self.assertEqual(parse_intent("allow folder D:\\X").name,
                          "allow_folder")
 
+    def test_model_commands(self):
+        for text in ("show model", "models", "llm status", "Ollama",
+                     "list models", "ai model", "model status"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "llm_status")
+        for text in ("benchmark", "benchmark model", "Benchmark the LLM"):
+            with self.subTest(text=text):
+                self.assertEqual(parse_intent(text).name, "benchmark_model")
+        intent = parse_intent("use model qwen2.5:3b")
+        self.assertEqual((intent.name, intent.entities),
+                         ("use_model", {"model": "qwen2.5:3b"}))
+        intent = parse_intent("switch to model llama3.2")
+        self.assertEqual(intent.entities, {"model": "llama3.2"})
+        self.assertEqual(parse_intent("use default model").entities,
+                         {"model": ""})
+        self.assertEqual(parse_intent("use profile standard").name,
+                         "set_profile")
+
     def test_authorise_needs_more_than_the_word_confirm(self):
         self.assertEqual(parse_intent("confirm").name, "confirm_yes")
         intent = parse_intent("Confirm delete reports.")
@@ -248,7 +266,8 @@ class ParseIntentTests(unittest.TestCase):
                    "enable ram", "use profile lite", "system info", "find x",
                    "create folder a in b", "undo", "allow folder x",
                    "show action log", "confirm foo bar", "open notepad",
-                   "allow app x", "disallow app x", "show allowed apps", "zzz"]
+                   "allow app x", "disallow app x", "show allowed apps", "show model",
+                   "use model x", "benchmark", "zzz"]
         for text in samples:
             self.assertIn(parse_intent(text).name, INTENT_NAMES)
 

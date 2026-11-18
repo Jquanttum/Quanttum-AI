@@ -98,7 +98,7 @@ Never expose passwords, tokens, private databases or personal information.
 
 ## 7. Current development status
 
-Version: 0.3.0
+Version: 0.5.0
 
 Implemented:
 - CustomTkinter graphical interface.
@@ -112,6 +112,7 @@ Implemented:
 - Memory Engine v2: FTS5/BM25 ranked search with stemming, categories (general/preference/task), similar-fact detection with replace-confirmation, superseded history, provenance (`source_message_id`), related facts.
 - Capability profiles and feature registry (`core/features.py`): profile presets, user overrides saved atomically to `data/settings.json`, RAM/package requirement checks, lazy-import gate. Features stay `planned` until their code exists.
 - Action Engine (`core/actions/`): Level 1/2/3 enforcement, validation re-run after confirmation, append-only audit log (schema v3), undo via recorded recipes. Actions so far: system_info, find_files, rebuild_index, allow_folder, disallow_folder, create_folder, remove_empty_folder (undo only).
+- Local AI model (`core/llm.py`, `core/llm_brain.py`): loopback-only Ollama client (stdlib), streaming chat with memory-as-context, hardware-aware model choice (RAM share rule), `show model` / `use model` / `benchmark`, optional LLM command understanding behind strict validation (allow-list, grounded text, no confirmations/permissions/forget). The Core runs each message on a worker thread (lock-protected), supports cancel and streaming; the window shows a Stop button.
 - Applications (`core/apps.py`, `core/actions/apps.py`): approved-apps list, Level 2 allow/open, only .lnk/.exe, exact stored path, no shell/arguments. Shared `PermissionsStore` for folders and apps.
 - CPU-aware profile recommendation (RAM and thread count).
 - Folder policy (`core/policy.py`) with fail-closed permissions file and OneDrive-safe known-folder lookup.
@@ -125,7 +126,7 @@ Not yet implemented (listed as `planned` in the feature registry):
 - Reminder scheduling and notifications (tasks are stored but nothing alerts the user).
 - Opening files and documents, Level 3 actions (the gate exists and is tested, but no destructive action is shipped), reminders.
 - Voice interaction.
-- Local LLM integration.
+- Voice input/output (Vosk + PyAudio installed on the dev PC; not built yet), semantic (embedding) memory, documents, reminders.
 - Advanced automation.
 
 ## 8. Collaboration
